@@ -1,0 +1,73 @@
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+
+import org.apache.tika.Tika;
+import org.apache.tika.metadata.Metadata;
+import java.io.InputStream ;
+import java.io.BufferedInputStream;
+import java.net.HttpURLConnection ;
+import java.net.URL;
+import org.apache.tika.metadata.Metadata ;
+import org.apache.tika.parser.ParseContext ;
+import org.apache.tika.parser.html.JSoupParser ;
+import org.apache.tika.sax.BodyContentHandler ;
+import org.apache.tika.sax.LinkContentHandler ;
+import org.apache.tika.sax.TeeContentHandler ;
+import org.apache.tika.sax.ToHTMLContentHandler ;
+import org.xml.sax.ContentHandler ;
+import org.apache.tika.language.detect.LanguageDetector ;
+import org.apache.tika.language.detect.LanguageResult ;
+import org.apache.tika.langdetect.optimaize.OptimaizeLangDetector;
+
+public class main{
+    public static void main(String[] args) throws Exception {
+
+        String path = args[0];
+        String option = args[1];
+        File dir = new File(path);
+
+        for(File file : dir.listFiles()){
+            if(option = "-d"){
+                optionD(file);
+            }
+
+        }
+
+    }
+}
+
+//Primera parte : "-d Realizar de forma automática una tabla que contenga el nombre del fichero, tipo, codificación e idioma."
+private static void optionD( File file ){
+
+    Tika tika = new Tika();
+    Metadata metadata = new Metadata();
+    InputStream is = new FileInputStream(file);
+    ParseContext parsecontext = new ParseContext();
+    AutodetectParser parser = new AutodetectParser();
+    BodyContentHandler handler = new BodyContentHandler(-1); 
+
+    //con autodetectParser obtenemos los metadatos y contenido del doc
+    parser.parse(is,handler,metadata,context);
+    is.close();
+
+    //obtenemos nombre
+    String name = file.getName();
+
+    //obtenemos tipo
+    String type = tika.detect(is);
+
+    //obtenemos codificación
+    String encoding = metadata.get("Content-Encoding");
+
+    //obtenemos el idioma
+    LanguageDetector detector = new OptimaizeLangDetector().loadModels();
+    LanguageResult result = detector.detect(handler.toString());
+    String language = result.getLanguage();
+
+    //imprimimos en forma de tabla
+    System.out.println(name + "\t" + type + "\t" + encoding + "\t" + language);
+
+
+
+}
