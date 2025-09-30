@@ -15,7 +15,6 @@ import java.net.HttpURLConnection ;
 import java.net.URL;
 import org.apache.tika.metadata.Metadata ;
 import org.apache.tika.parser.ParseContext ;
-import org.apache.tika.parser.html.JSoupParser ;
 import org.apache.tika.sax.BodyContentHandler ;
 import org.apache.tika.sax.LinkContentHandler ;
 import org.apache.tika.sax.TeeContentHandler ;
@@ -36,15 +35,16 @@ public class Main{
             if(option.equals("-d")){
                 optionD(file);
             }
+            else if(option.equals("-t")){
+                optionT(file);
+            }
+            else if(option.equals("-l")){
+                optionL(file);
+            }
+
 
         }
         
-        for(File file : dir.listFiles()){
-            if(option.equals("-t")){
-                optionT(file);
-            }
-
-        }
 
     }
 
@@ -82,6 +82,23 @@ public class Main{
 
     }
 
+    //Segunda parte : "-l Todos los enlaces que se pueden extraer de cada documento"
+    private static void optionL(File file) throws Exception{
+        LinkContentHandler linkhandler = new LinkContentHandler();
+        ContentHandler texthandler = new BodyContentHandler(-1);
+        TeeContentHandler teehandler = new TeeContentHandler(linkhandler,texthandler);
+        FileInputStream is = new FileInputStream(file);
+
+        Metadata metadata = new Metadata();
+        ParseContext parseContext = new ParseContext();
+        AutoDetectParser parser = new AutoDetectParser();
+
+        parser.parse(is,teehandler,metadata,parseContext);
+
+        System.out.println("links: \n" + linkhandler.getLinks());
+
+    }
+
     // Metodo para ordenar el HashMap por valor
     static HashMap<String, Integer> sortByValue(HashMap<String, Integer> hm) {
         List<Map.Entry<String, Integer> > list =
@@ -102,6 +119,8 @@ public class Main{
             }
             return temp;
     }
+
+    
     // Tercera parte: "-t Generar un fichero CSV con las palabras y sus frecuencias en order decreciete de frecuencia, si el fichero de Yerma es txt."
     private static void optionT(File file) throws Exception {
 
@@ -170,5 +189,6 @@ public class Main{
             
         }
     }
+        
 }
 
