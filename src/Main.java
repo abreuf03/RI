@@ -120,7 +120,7 @@ public class Main{
             return temp;
     }
 
-    
+  
     // Tercera parte: "-t Generar un fichero CSV con las palabras y sus frecuencias en order decreciete de frecuencia, si el fichero de Yerma es txt."
     private static void optionT(File file) throws Exception {
 
@@ -128,8 +128,8 @@ public class Main{
         Tika tika = new Tika();
 
         // Se parsean todos los ficheros pasados como arguemnto y se extrae el contenido
-        for (String file: args) {
-            File f = new File(file);
+        //for (String file: args) {
+            File f = file;// new File(file);
 
             // Obtenemos el tipo de fichero
             String type = tika.detect(f);
@@ -188,7 +188,6 @@ public class Main{
             
             
         }
-    }
-        
 }
+
 
