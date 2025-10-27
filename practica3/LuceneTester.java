@@ -1,5 +1,4 @@
-//package src;
-import  src.LukeIndex;
+import src.LukeIndex;
 import java.io.IOException;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -8,7 +7,7 @@ import org.apache.lucene.search.similarities.*;
 
 public class LuceneTester {
     String indexPath = "./index";
-    String docPath = "../listings.csv";
+    String docPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
     LukeIndex indexer;
     Analyzer analyzer = new StandardAnalyzer();
     Similarity sim = new ClassicSimilarity();
@@ -26,9 +25,13 @@ public class LuceneTester {
     // todavia no esta completo
     private void createIndex() throws IOException {
         indexer = new LukeIndex(indexPath, analyzer, sim);
-        int numIndexed;
+        int numIndexed = 0;
         long startTime = System.currentTimeMillis();
-        numIndexed = indexer.createIndex(docPath,  100);
+        try {
+            numIndexed = indexer.createIndex(docPath,  100);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         long endTime = System.currentTimeMillis();
         indexer.close();
         System.out.println(numIndexed+" file indexed, time taken: "+(endTime-startTime)+" ms");

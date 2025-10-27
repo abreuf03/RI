@@ -16,8 +16,12 @@ import java.io.IOException;
 import java.nio.file.Paths;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import com.opencsv.*;
+import java.util.Map;
+import java.util.HashMap;
+import com.opencsv.exceptions.CsvValidationException;
 
 public class LukeIndex {
 
@@ -38,19 +42,22 @@ public class LukeIndex {
         writer = new IndexWriter(idxDir, config);
     }
 
-    private Document getDocument(String[] indices, String[] values) {
+    private Document getDocument(Map<String, Integer> map, List<String> values) {
         Document doc = new Document();
 
-        Field idField = new StringField("id", "fff", Field.Store.YES);
+        for (String attr: map.keySet()) {
+            doc.add(new StringField(attr, values.get(map.get(attr)), Field.Store.YES));
+            System.out.println("Attribute: "+attr+", Value: "+values.get(map.get(attr)));
+        }
+//        Field idField = new StringField("id", "fff", Field.Store.YES);
 //        ...
-
-        doc.add(idField);
+//        doc.add(idField);
         return doc;
     }
 
-    private void indexEntry(String[] indices, String[] values) {
+    private void indexEntry(Map<String, Integer> map, List<String> values) {
         System.out.println("Indexing...");
-        Document doc = getDocument(indices, values);
+        Document doc = getDocument(map, values);
         try {
             writer.addDocument(doc);
         } catch (IOException e) {
@@ -58,7 +65,8 @@ public class LukeIndex {
         }
     }
 
-    public int createIndex(String docPath, int limit) throws IOException {
+    public int createIndex(String docPath, int limit) throws Exception {
+        // Read the file before starting indexing
         File file = new File(docPath);
 
         List<List<String>> lines = new ArrayList<>();
@@ -90,17 +98,29 @@ public class LukeIndex {
             e.printStackTrace();
         }
 
+        Map<String, Integer> map = new HashMap<String, Integer>();
         List<String> host = lines.getFirst();
-        int url = host.indexOf("host_url");
-        int name = host.indexOf("host_name");
-        int since = host.indexOf("host_since");
-        int location = host.indexOf("host_location");
-        int about = host.indexOf("host_about");
-        int response_time = host.indexOf("host_response_time");
-        int is_superhost = host.indexOf("host_is_superhost");
-        int neighbourhood = host.indexOf("host_neighbourhood");
+        map.put("host_url", host.indexOf("host_url"));
+        map.put("host_name", host.indexOf("host_name"));
+        map.put("host_since", host.indexOf("host_since"));
+        map.put("host_location", host.indexOf("host_location"));
+        map.put("host_about", host.indexOf("host_about"));
+        map.put("host_response_time", host.indexOf("host_response_time"));
+        map.put("host_is_superhost", host.indexOf("host_is_superhost"));
+        map.put("host_neighbourhood", host.indexOf("host_neighbourhood"));
 
-        return 0;
+        int numIndexed = 0;
+        for (List<String> row: lines) {
+            try {
+                indexEntry(map, row);
+                numIndexed++;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+
+        return numIndexed;
         // eso no funciona :(
 //        Scanner inputStream;
 
