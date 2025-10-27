@@ -109,18 +109,16 @@ public class LukeIndex {
         map.put("host_is_superhost", host.indexOf("host_is_superhost"));
         map.put("host_neighbourhood", host.indexOf("host_neighbourhood"));
 
-        int numIndexed = 0;
         for (List<String> row: lines) {
             try {
                 indexEntry(map, row);
-                numIndexed++;
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
 
 
-        return numIndexed;
+        return writer.getDocStats().numDocs;
         // eso no funciona :(
 //        Scanner inputStream;
 
