@@ -1,9 +1,15 @@
-package src;
+
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.IntPoint;
+import org.apache.lucene.document.LatLonPoint;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
@@ -41,7 +47,7 @@ public class LukeIndex {
         config.setSimilarity(similarity);
         writer = new IndexWriter(idxDir, config);
     }
-
+/* 
     private Document getDocument(Map<String, Integer> map, List<String> values) {
         Document doc = new Document();
 
@@ -53,7 +59,78 @@ public class LukeIndex {
 //        ...
 //        doc.add(idField);
         return doc;
+    }*/
+    private Document getDocument(Map<String, Integer> map, List<String> values) {
+        Document doc = new Document();
+
+        for (String attr : map.keySet()) {
+            String val = values.get(map.get(attr));
+            System.out.println("Attribute: " + attr + ", Value: " + val);
+
+            switch (attr) {
+                case "latitude":
+                case "longitude":
+                    // Para crear LatLonPoint necesitamos ambos valores
+                    try {
+                        double lat = Double.parseDouble(values.get(map.get("latitude")));
+                        double lon = Double.parseDouble(values.get(map.get("longitude")));
+                        doc.add(new LatLonPoint("location", lat, lon));
+                        doc.add(new StoredField("latitude", lat));
+                        doc.add(new StoredField("longitude", lon));
+                    } catch (Exception e) {
+                        System.err.println("Error parsing lat/lon: " + e.getMessage());
+                    }
+                    break;
+
+                case "bathrooms":
+                    try {
+                        double bathrooms = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+                        doc.add(new DoublePoint("bathrooms", bathrooms));
+                        doc.add(new StoredField("bathrooms", bathrooms));
+                    } catch (Exception e) {
+                        System.err.println("Error parsing bathrooms: " + e.getMessage());
+                    }
+                    break;
+
+                case "price":
+                    try {
+                        double price = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+                        doc.add(new DoublePoint("price", price));
+                        doc.add(new StoredField("price", price));
+                    } catch (Exception e) {
+                        System.err.println("Error parsing price: " + e.getMessage());
+                    }
+                    break;
+
+                case "bedrooms":
+                case "number_of_reviews":
+                    try {
+                        int num = Integer.parseInt(val.replaceAll("[^0-9]", ""));
+                        doc.add(new IntPoint(attr, num));
+                        doc.add(new StoredField(attr, num));
+                    } catch (Exception e) {
+                        System.err.println("Error parsing int field " + attr + ": " + e.getMessage());
+                    }
+                    break;
+
+                case "description":
+                case "name":
+                case "neighborhood_overview":
+                case "amenities":
+                case "bathrooms_text":
+                    doc.add(new TextField(attr, val, Field.Store.YES));
+                    break;
+
+                default:
+                    // Todos los demás atributos como StringField
+                    doc.add(new StringField(attr, val, Field.Store.YES));
+                    break;
+            }
+        }
+
+        return doc;
     }
+
 
     private void indexEntry(Map<String, Integer> map, List<String> values) {
         System.out.println("Indexing...");
@@ -109,6 +186,24 @@ public class LukeIndex {
         map.put("host_is_superhost", host.indexOf("host_is_superhost"));
         map.put("host_neighbourhood", host.indexOf("host_neighbourhood"));
 
+        //atributos elena
+        map.put("id", host.indexOf("id"));
+        map.put("listing_url", host.indexOf("listing_url"));
+        map.put("name", host.indexOf("name"));
+        map.put("description", host.indexOf("description"));
+        map.put("neighborhood_overview", host.indexOf("neighborhood_overview"));
+        map.put("neighbourhood_cleansed", host.indexOf("neighbourhood_cleansed"));
+        map.put("latitude", host.indexOf("latitude"));
+        map.put("longitude", host.indexOf("longitude"));
+        map.put("property_type", host.indexOf("property_type"));
+        map.put("bathrooms", host.indexOf("bathrooms"));
+        map.put("bathrooms_text", host.indexOf("bathrooms_text"));
+        map.put("bedrooms", host.indexOf("bedrooms"));
+        map.put("amenities", host.indexOf("amenities"));
+        map.put("price", host.indexOf("price"));
+        map.put("number_of_reviews", host.indexOf("number_of_reviews"));
+        map.put("review_scores_rating", host.indexOf("review_scores_rating"));
+
         for (List<String> row: lines) {
             try {
                 indexEntry(map, row);
@@ -157,4 +252,31 @@ public class LukeIndex {
             System.out.println("Error closing the index.");
         }
     }
+
+    public static void main(String[] args) throws Exception {
+        if (args.length < 3) {
+            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice> <límite_filas>");
+            return;
+        }
+
+        String csvPath = args[0];      // Ruta al CSV
+        String indexPath = args[1];    // Ruta donde se creará el índice
+        int limit = Integer.parseInt(args[2]); // Número máximo de filas a indexar (0 = todas)
+
+        // Analizador y similaridad de Lucene
+        Analyzer analyzer = new StandardAnalyzer();
+        Similarity similarity = new ClassicSimilarity();
+
+        // Crear indexador
+        LukeIndex indexador = new LukeIndex(indexPath, analyzer, similarity);
+
+        // Crear índice
+        int numDocs = indexador.createIndex(csvPath, limit);
+        System.out.println("Número de documentos indexados: " + numDocs);
+
+        // Cerrar indexador
+        indexador.close();
+    
+    }
+
 }
