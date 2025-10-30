@@ -1,4 +1,7 @@
+
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.shingle.ShingleAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
@@ -43,7 +46,7 @@ public class LukeIndex {
         FSDirectory idxDir = FSDirectory.open(Paths.get(indexPath));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         
-        if(mode == "crear"){
+        if(mode.equals("crear")){
             config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
         }
         else{
@@ -123,13 +126,24 @@ public class LukeIndex {
                 case "description":
                 case "name":
                 case "neighborhood_overview":
-                case "amenities":
                 case "bathrooms_text":
-                    doc.add(new TextField(attr, val, Field.Store.YES));
+                case "host_neighbourhood":
+                    String cleanData = val
+                    .replaceAll("<[^>]+>", ""); //eliminar etiquetas de HTML
+                    doc.add(new TextField(attr, cleanData, Field.Store.YES));
                     break;
                 
                 case "listing_url":
                     doc.add(new StoredField(attr, val));
+                    break;
+                case "amenities": //limpiar datos 
+                    String cleanAmenities = val
+                        .replaceAll("[\\[\\]\"]", "") //eliminar corchetes y comillas
+                        .replaceAll("u2019", "'") //pack u2019n play == pack 'n play
+                        .trim(); //eliminar espacios iniciales o finales 
+                    
+                    doc.add(new TextField(attr, cleanAmenities,Field.Store.YES ));
+                    break;
                 default:
                     // Todos los demás atributos como StringField
                     doc.add(new StringField(attr, val, Field.Store.YES));
@@ -274,7 +288,7 @@ public class LukeIndex {
         String mode = args[3];
 
         // Analizador y similaridad de Lucene
-        Analyzer analyzer = new StandardAnalyzer();
+        Analyzer analyzer = new EnglishAnalyzer();
         Similarity similarity = new ClassicSimilarity();
 
         // Crear indexador
