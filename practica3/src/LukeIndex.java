@@ -1,4 +1,3 @@
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.search.similarities.ClassicSimilarity;
@@ -31,19 +30,26 @@ import com.opencsv.exceptions.CsvValidationException;
 
 public class LukeIndex {
 
-    boolean createIndex = true;
+    //boolean createIndex = true;
     private IndexWriter writer;
     private String indexPath;
     private Analyzer analyzer;
     private Similarity similarity;
 
-    public LukeIndex(String indexPath, Analyzer analyzer, Similarity similarity) throws IOException {
+    public LukeIndex(String indexPath, Analyzer analyzer, Similarity similarity, String mode) throws IOException {
         this.indexPath = indexPath;
         this.analyzer = analyzer;
         this.similarity = similarity;
         FSDirectory idxDir = FSDirectory.open(Paths.get(indexPath));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
-        config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
+        
+        if(mode == "crear"){
+            config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
+        }
+        else{
+            config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
+        }
+        
         config.setSimilarity(similarity);
         writer = new IndexWriter(idxDir, config);
     }
@@ -93,6 +99,7 @@ public class LukeIndex {
                     break;
 
                 case "price":
+                case "review_scores_rating":
                     try {
                         double price = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
                         doc.add(new DoublePoint("price", price));
@@ -120,7 +127,9 @@ public class LukeIndex {
                 case "bathrooms_text":
                     doc.add(new TextField(attr, val, Field.Store.YES));
                     break;
-
+                
+                case "listing_url":
+                    doc.add(new StoredField(attr, val));
                 default:
                     // Todos los demás atributos como StringField
                     doc.add(new StringField(attr, val, Field.Store.YES));
@@ -262,13 +271,14 @@ public class LukeIndex {
         String csvPath = args[0];      // Ruta al CSV
         String indexPath = args[1];    // Ruta donde se creará el índice
         int limit = Integer.parseInt(args[2]); // Número máximo de filas a indexar (0 = todas)
+        String mode = args[3];
 
         // Analizador y similaridad de Lucene
         Analyzer analyzer = new StandardAnalyzer();
         Similarity similarity = new ClassicSimilarity();
 
         // Crear indexador
-        LukeIndex indexador = new LukeIndex(indexPath, analyzer, similarity);
+        LukeIndex indexador = new LukeIndex(indexPath, analyzer, similarity, mode);
 
         // Crear índice
         int numDocs = indexador.createIndex(csvPath, limit);
