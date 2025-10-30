@@ -1,10 +1,16 @@
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
-import org.apache.lucene.document.*;
 import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.DoublePoint;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.IntPoint;
+import org.apache.lucene.document.LatLonPoint;
+import org.apache.lucene.document.StoredField;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.FSDirectory;
@@ -14,30 +20,36 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Paths;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.*;
-
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import com.opencsv.*;
-
+import java.util.Map;
 import java.util.HashMap;
 import com.opencsv.exceptions.CsvValidationException;
 
 public class LukeIndex {
 
-    boolean createIndex = true;
+    //boolean createIndex = true;
     private IndexWriter writer;
     private String indexPath;
     private Analyzer analyzer;
     private Similarity similarity;
 
-    public LukeIndex(String indexPath, Analyzer analyzer, Similarity similarity) throws IOException {
+    public LukeIndex(String indexPath, Analyzer analyzer, Similarity similarity, String mode) throws IOException {
         this.indexPath = indexPath;
         this.analyzer = analyzer;
         this.similarity = similarity;
         FSDirectory idxDir = FSDirectory.open(Paths.get(indexPath));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
-        config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
+        
+        if(mode == "crear"){
+            config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
+        }
+        else{
+            config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
+        }
+        
         config.setSimilarity(similarity);
         writer = new IndexWriter(idxDir, config);
     }
@@ -57,12 +69,8 @@ public class LukeIndex {
     private Document getDocument(Map<String, Integer> map, List<String> values) {
         Document doc = new Document();
 
-
         for (String attr : map.keySet()) {
             String val = values.get(map.get(attr));
-            if (attr.equals(val)) {
-                ;
-            } else {
             System.out.println("Attribute: " + attr + ", Value: " + val);
 
             switch (attr) {
@@ -80,28 +88,26 @@ public class LukeIndex {
                     }
                     break;
 
-                case "review_scores_rating":
                 case "bathrooms":
-                case "price":
                     try {
-                        double value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-                        doc.add(new DoublePoint(attr, value));
-                        doc.add(new StoredField(attr, value));
+                        double bathrooms = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+                        doc.add(new DoublePoint("bathrooms", bathrooms));
+                        doc.add(new StoredField("bathrooms", bathrooms));
                     } catch (Exception e) {
-                        System.err.println("Error parsing "+ attr+ ": " + e.getMessage());
+                        System.err.println("Error parsing bathrooms: " + e.getMessage());
                     }
                     break;
 
-//                case "price":
-//
-//                    try {
-//                        double price = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-//                        doc.add(new DoublePoint(attr, price));
-//                        doc.add(new StoredField(attr, price));
-//                    } catch (Exception e) {
-//                        System.err.println("Error parsing price: " + e.getMessage());
-//                    }
-//                    break;
+                case "price":
+                case "review_scores_rating":
+                    try {
+                        double price = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+                        doc.add(new DoublePoint("price", price));
+                        doc.add(new StoredField("price", price));
+                    } catch (Exception e) {
+                        System.err.println("Error parsing price: " + e.getMessage());
+                    }
+                    break;
 
                 case "bedrooms":
                 case "number_of_reviews":
@@ -119,41 +125,15 @@ public class LukeIndex {
                 case "neighborhood_overview":
                 case "amenities":
                 case "bathrooms_text":
-                case "host_about":
-                case "host_location":
-                case "host_response_time":
-                case "host_neighbourhood":
                     doc.add(new TextField(attr, val, Field.Store.YES));
                     break;
-//                host_url, host_name, host_since,
-//  host_location, host_about,
-//host_response_time, host_is_superhost,
-//host_neighbourhood
-                case "host_since":
-                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-                    try {
-                        Date date = sdf.parse(val);
-                        doc.add(new LongPoint("host_since", date.getTime()));
-                    } catch (Exception e) {
-                        System.err.println("Error parsing date: " + e.getMessage());
-                    }
-                    break;
-
-                case "host_is_superhost":
-                    if ("t".equals(val)) {
-                        doc.add(new TextField(attr, "true", Field.Store.YES));
-                    } else if ("f".equals(val)) {
-                        doc.add(new TextField(attr, "false", Field.Store.YES));
-                    } else {
-                       System.out.println("Invalid value for host_is_superhost: " + val);
-                    }
-                    break;
+                
+                case "listing_url":
+                    doc.add(new StoredField(attr, val));
                 default:
                     // Todos los demás atributos como StringField
                     doc.add(new StringField(attr, val, Field.Store.YES));
                     break;
-            }
-
             }
         }
 
@@ -291,17 +271,14 @@ public class LukeIndex {
         String csvPath = args[0];      // Ruta al CSV
         String indexPath = args[1];    // Ruta donde se creará el índice
         int limit = Integer.parseInt(args[2]); // Número máximo de filas a indexar (0 = todas)
-
-//        String indexPath = "./index";
-//        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-//        int limit = 10;
+        String mode = args[3];
 
         // Analizador y similaridad de Lucene
         Analyzer analyzer = new StandardAnalyzer();
         Similarity similarity = new ClassicSimilarity();
 
         // Crear indexador
-        LukeIndex indexador = new LukeIndex(indexPath, analyzer, similarity);
+        LukeIndex indexador = new LukeIndex(indexPath, analyzer, similarity, mode);
 
         // Crear índice
         int numDocs = indexador.createIndex(csvPath, limit);
