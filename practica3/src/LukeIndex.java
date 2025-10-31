@@ -22,7 +22,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Paths;
-
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -92,23 +92,23 @@ public class LukeIndex {
                     break;
 
                 case "bathrooms":
-                    try {
-                        double bathrooms = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-                        doc.add(new DoublePoint("bathrooms", bathrooms));
-                        doc.add(new StoredField("bathrooms", bathrooms));
-                    } catch (Exception e) {
-                        System.err.println("Error parsing bathrooms: " + e.getMessage());
-                    }
-                    break;
+                    // try {
+                    //     double bathrooms = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+                    //     doc.add(new DoublePoint("bathrooms", bathrooms));
+                    //     doc.add(new StoredField("bathrooms", bathrooms));
+                    // } catch (Exception e) {
+                    //     System.err.println("Error parsing bathrooms: " + e.getMessage());
+                    // }
+                    // break;
 
                 case "price":
                 case "review_scores_rating":
                     try {
-                        double price = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-                        doc.add(new DoublePoint("price", price));
-                        doc.add(new StoredField("price", price));
+                        double value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+                        doc.add(new DoublePoint(attr, value));
+                        doc.add(new StoredField(attr, value));
                     } catch (Exception e) {
-                        System.err.println("Error parsing price: " + e.getMessage());
+                        System.err.println("Error parsing " + attr + ": " + e.getMessage());
                     }
                     break;
 
@@ -128,6 +128,9 @@ public class LukeIndex {
                 case "neighborhood_overview":
                 case "bathrooms_text":
                 case "host_neighbourhood":
+                case "host_about":
+                case "host_location":
+                case "host_response_time":
                     String cleanData = val
                     .replaceAll("<[^>]+>", ""); //eliminar etiquetas de HTML
                     doc.add(new TextField(attr, cleanData, Field.Store.YES));
@@ -143,6 +146,26 @@ public class LukeIndex {
                         .trim(); //eliminar espacios iniciales o finales 
                     
                     doc.add(new TextField(attr, cleanAmenities,Field.Store.YES ));
+                    break;
+
+                 case "host_since":
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+                    try {
+                        Date date = sdf.parse(val);
+                        doc.add(new LongPoint("host_since", date.getTime()));
+                    } catch (Exception e) {
+                        System.err.println("Error parsing date: " + e.getMessage());
+                    }
+                    break;
+
+                case "host_is_superhost":
+                    if ("t".equals(val)) {
+                        doc.add(new TextField(attr, "yes", Field.Store.YES));
+                    } else if ("f".equals(val)) {
+                        doc.add(new TextField(attr, "no", Field.Store.YES));
+                    } else {
+                       System.out.println("Invalid value for host_is_superhost: " + val);
+                    }
                     break;
                 default:
                     // Todos los demás atributos como StringField
