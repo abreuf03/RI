@@ -1,4 +1,4 @@
-import src.LukeIndex;
+//import src.LukeIndex;
 import java.io.IOException;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -12,15 +12,15 @@ public class LuceneTester {
     Analyzer analyzer = new StandardAnalyzer();
     Similarity sim = new ClassicSimilarity();
 
-    public static void main(String[] args) {
-        LuceneTester tester;
-        try {
-            tester = new LuceneTester();
-            tester.createIndex();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+//    public static void main(String[] args) {
+//        LuceneTester tester;
+//        try {
+//            tester = new LuceneTester();
+//            tester.createIndex();
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//    }
 
     // todavia no esta completo
     private void createIndex() throws IOException {
