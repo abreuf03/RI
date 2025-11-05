@@ -87,15 +87,7 @@ public class LukeIndex {
                         }
                         break;
 
-                    case "bathrooms":
-                        // try {
-                        //     double bathrooms = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-                        //     doc.add(new DoublePoint("bathrooms", bathrooms));
-                        //     doc.add(new StoredField("bathrooms", bathrooms));
-                        // } catch (Exception e) {
-                        //     System.err.println("Error parsing bathrooms: " + e.getMessage());
-                        // }
-                        // break;
+                    
 
                     case "price":
                     case "review_scores_rating":
@@ -110,6 +102,7 @@ public class LukeIndex {
 
                     case "bedrooms":
                     case "number_of_reviews":
+                    case "bathrooms":
                         try {
                             int num = Integer.parseInt(val.replaceAll("[^0-9]", ""));
                             doc.add(new IntPoint(attr, num));
