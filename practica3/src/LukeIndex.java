@@ -3,17 +3,10 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.shingle.ShingleAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.document.*;
 import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.DoublePoint;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.IntPoint;
-import org.apache.lucene.document.LatLonPoint;
-import org.apache.lucene.document.StoredField;
-import org.apache.lucene.document.StringField;
-import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.FSDirectory;
@@ -23,11 +16,10 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
+
 import com.opencsv.*;
-import java.util.Map;
+
 import java.util.HashMap;
 import com.opencsv.exceptions.CsvValidationException;
 
@@ -149,7 +141,7 @@ public class LukeIndex {
                             .replaceAll("u2019", "'") //pack u2019n play == pack 'n play
                             .trim(); //eliminar espacios iniciales o finales 
                         
-                        doc.add(new TextField(attr, cleanAmenities,Field.Store.YES ));
+                        doc.add(new TextField(attr, cleanAmenities, Field.Store.YES));
                         break;
 
                     case "host_since":
@@ -157,6 +149,7 @@ public class LukeIndex {
                         try {
                             Date date = sdf.parse(val);
                             doc.add(new LongPoint("host_since", date.getTime()));
+                            doc.add(new StoredField("host_since", date.getTime()));
                         } catch (Exception e) {
                             System.err.println("Error parsing date: " + e.getMessage());
                         }
