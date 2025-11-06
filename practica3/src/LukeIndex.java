@@ -178,7 +178,62 @@ public class LukeIndex {
         }
     }
 
-    public int createIndex(String docPath, int limit) throws Exception {
+    public int createHostIndex(String docPath, int limit) throws Exception {
+        // Read the file before starting indexing
+        File file = new File(docPath);
+
+        List<List<String>> lines = new ArrayList<>();
+        try {
+
+            // Create an object of filereader
+            // class with CSV file as a parameter.
+            FileReader filereader = new FileReader(file);
+
+            // create csvReader object passing
+            // file reader as a parameter
+            CSVReader csvReader = new CSVReader(filereader);
+            String[] nextRecord;
+            List<String> rows = new ArrayList<>();
+            int count = 0;
+            // we are going to read data line by line
+            while ((nextRecord = csvReader.readNext()) != null && count < limit) {
+                for (String cell : nextRecord) {
+//                    System.out.print(cell+ " ");
+                    rows.add(cell);
+                }
+                lines.add(rows);
+                rows = new ArrayList<>();
+                System.out.println();
+                count++;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        Map<String, Integer> map = new HashMap<String, Integer>();
+        List<String> host = lines.getFirst();
+        map.put("host_url", host.indexOf("host_url"));
+        map.put("host_name", host.indexOf("host_name"));
+        map.put("host_since", host.indexOf("host_since"));
+        map.put("host_location", host.indexOf("host_location"));
+        map.put("host_about", host.indexOf("host_about"));
+        map.put("host_response_time", host.indexOf("host_response_time"));
+        map.put("host_is_superhost", host.indexOf("host_is_superhost"));
+        map.put("host_neighbourhood", host.indexOf("host_neighbourhood"));
+
+        for (List<String> row : lines) {
+            try {
+                indexEntry(map, row);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+
+        return writer.getDocStats().numDocs;
+    }
+
+    public int createPropertyIndex(String docPath, int limit) throws Exception {
         // Read the file before starting indexing
         File file = new File(docPath);
 
@@ -213,14 +268,6 @@ public class LukeIndex {
 
         Map<String, Integer> map = new HashMap<String, Integer>();
         List<String> host = lines.getFirst();
-        map.put("host_url", host.indexOf("host_url"));
-        map.put("host_name", host.indexOf("host_name"));
-        map.put("host_since", host.indexOf("host_since"));
-        map.put("host_location", host.indexOf("host_location"));
-        map.put("host_about", host.indexOf("host_about"));
-        map.put("host_response_time", host.indexOf("host_response_time"));
-        map.put("host_is_superhost", host.indexOf("host_is_superhost"));
-        map.put("host_neighbourhood", host.indexOf("host_neighbourhood"));
 
         //atributos elena
         map.put("id", host.indexOf("id"));
@@ -290,30 +337,35 @@ public class LukeIndex {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 3) {
-            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice> <límite_filas>");
+        if (args.length < 4) {
+            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas>");
             return;
         }
 
         String csvPath = args[0];      // Ruta al CSV
-        String indexPath = args[1];    // Ruta donde se creará el índice
-        int limit = Integer.parseInt(args[2]); // Número máximo de filas a indexar (0 = todas)
-        String mode = args[3];
+        String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
+        String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrion
+        int limit = Integer.parseInt(args[3]); // Número máximo de filas a indexar (0 = todas)
+        String mode = args[4];
 
         // Analizador y similaridad de Lucene
         Analyzer analyzer = new EnglishAnalyzer();
         Similarity similarity = new ClassicSimilarity();
 
         // Crear indexador
-        LukeIndex indexador = new LukeIndex(indexPath, analyzer, similarity, mode);
+        LukeIndex propIndexador = new LukeIndex(propIndexPath, analyzer, similarity, mode);
+        LukeIndex hostIndexador = new LukeIndex(hostIndexPath, analyzer, similarity, mode);
 
         // Crear índice
-        int numDocs = indexador.createIndex(csvPath, limit);
-        System.out.println("Número de documentos indexados: " + numDocs);
+        int numDocs = propIndexador.createPropertyIndex(csvPath, limit);
+        System.out.println("Número de documentos indexados de propiedad: " + numDocs);
+        numDocs = hostIndexador.createHostIndex(csvPath, limit);
+        System.out.println("Número de documentos indexados de anfitrión: " + numDocs);
 
         // Cerrar indexador
-        indexador.close();
-    
+        propIndexador.close();
+        hostIndexador.close();
+
     }
 
 }
