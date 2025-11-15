@@ -92,8 +92,13 @@ public class LukeIndex {
                     case "price":
                     case "review_scores_rating":
                         try {
-                            double value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-                            doc.add(new DoublePoint(attr, value));
+                            double value;
+                            if (val.isEmpty()) {
+                                value = 0.0;
+                            } else {
+                                value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+                                doc.add(new DoublePoint(attr, value));
+                            }
                             doc.add(new StoredField(attr, value));
                         } catch (Exception e) {
                             System.err.println("Error parsing " + attr + ": " + e.getMessage());
@@ -104,7 +109,13 @@ public class LukeIndex {
                     case "number_of_reviews":
                     case "bathrooms":
                         try {
-                            int num = Integer.parseInt(val.replaceAll("[^0-9]", ""));
+                            int num;
+                            if (val.isEmpty()) {
+                               num = 0;
+                            } else {
+                                double parsed = Double.parseDouble(val);
+                                num = (int) parsed;
+                            }
                             doc.add(new IntPoint(attr, num));
                             doc.add(new StoredField(attr, num));
                         } catch (Exception e) {
@@ -337,16 +348,21 @@ public class LukeIndex {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 4) {
-            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas>");
-            return;
-        }
+//        if (args.length < 4) {
+//            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas>");
+//            return;
+//        }
 
-        String csvPath = args[0];      // Ruta al CSV
-        String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
-        String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrion
-        int limit = Integer.parseInt(args[3]); // Número máximo de filas a indexar (0 = todas)
-        String mode = args[4];
+//        String csvPath = args[0];      // Ruta al CSV
+//        String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
+//        String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrion
+//        int limit = Integer.parseInt(args[3]); // Número máximo de filas a indexar (0 = todas)
+//        String mode = args[4];
+        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
+        String propIndexPath = "./propIndex";
+        String hostIndexPath = "./hostIndex";
+        int limit = 1000;
+        String mode = "crear";
 
         // Analizador y similaridad de Lucene
         Analyzer analyzer = new EnglishAnalyzer();
