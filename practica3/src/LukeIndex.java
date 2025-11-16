@@ -126,6 +126,8 @@ public class LukeIndex {
                         break;
                     
                     case "listing_url":
+                    case "id":
+                    case "host_url":
                         doc.add(new StoredField(attr, val));
                         break;
                     case "amenities": //limpiar datos 
