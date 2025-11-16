@@ -19,8 +19,6 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 import com.opencsv.*;
-
-import java.util.HashMap;
 import com.opencsv.exceptions.CsvValidationException;
 
 
@@ -82,6 +80,7 @@ public class LukeIndex {
                             doc.add(new LatLonPoint("location", lat, lon));
                             doc.add(new StoredField("latitude", lat));
                             doc.add(new StoredField("longitude", lon));
+                            doc.add(new LatLonDocValuesField("location", lat, lon));
                         } catch (Exception e) {
                             System.err.println("Error parsing lat/lon: " + e.getMessage());
                         }
@@ -95,6 +94,8 @@ public class LukeIndex {
                             double value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
                             doc.add(new DoublePoint(attr, value));
                             doc.add(new StoredField(attr, value));
+                            // Para poder ORDENAR por este campo
+                            doc.add(new DoubleDocValuesField(attr, Double.doubleToRawLongBits(value)));
                         } catch (Exception e) {
                             System.err.println("Error parsing " + attr + ": " + e.getMessage());
                         }
