@@ -80,6 +80,7 @@ public class LukeIndex {
                             doc.add(new LatLonPoint("location", lat, lon));
                             doc.add(new StoredField("latitude", lat));
                             doc.add(new StoredField("longitude", lon));
+                            doc.add(new StoredField("location", lat + "," + lon));
                             doc.add(new LatLonDocValuesField("location", lat, lon));
                         } catch (Exception e) {
                             System.err.println("Error parsing lat/lon: " + e.getMessage());
@@ -89,17 +90,48 @@ public class LukeIndex {
                     
 
                     case "price":
-                    case "review_scores_rating":
                         try {
-                            double value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-                            doc.add(new DoublePoint(attr, value));
-                            doc.add(new StoredField(attr, value));
-                            // Para poder ORDENAR por este campo
-                            doc.add(new DoubleDocValuesField(attr, Double.doubleToRawLongBits(value)));
-                        } catch (Exception e) {
-                            System.err.println("Error parsing " + attr + ": " + e.getMessage());
+                            if (val == null || val.isBlank()) break; // ignorar valores vacíos
+
+                                // Limpiar comillas, signo $ y comas
+                                String cleanVal = val.replace("\"", "")
+                                                    .replace("$", "")
+                                                    .replace(",", "")
+                                                    .trim();
+
+                                double value = Double.parseDouble(cleanVal);
+
+                                // Indexar correctamente
+                                doc.add(new DoublePoint("price", value));                             // para búsquedas
+                                doc.add(new StoredField("price", value));                             // para recuperar con document.getField()
+                                doc.add(new DoubleDocValuesField("price", Double.doubleToRawLongBits(value)));  // para ordenar
+                                //debugging : System.out.println("Indexando price: '" + val + "' → " + value);
+
+                        } catch (NumberFormatException e) {
+                            System.err.println("Error parsing price: '" + val + "'");
                         }
                         break;
+
+                    case "review_scores_rating":
+                        try {
+                            if (val == null || val.isBlank()) break; // ignorar valores vacíos
+
+                            // Limpiar comillas y espacios
+                            String cleanVal = val.replace("\"", "").trim();
+
+                            double value = Double.parseDouble(cleanVal);
+
+                            // Indexar correctamente
+                            doc.add(new DoublePoint("review_scores_rating", value));
+                            doc.add(new StoredField("review_scores_rating", value));
+                            doc.add(new DoubleDocValuesField("review_scores_rating", Double.doubleToRawLongBits(value)));
+                            //debugging : System.out.println("Indexando review_scores_rating: '" + val + "' → " + value);
+
+                        } catch (NumberFormatException e) {
+                            System.err.println("Error parsing review_scores_rating: '" + val + "'");
+                        }
+                        break;
+
 
                     case "bedrooms":
                     case "number_of_reviews":
@@ -237,60 +269,48 @@ public class LukeIndex {
     }
 
     public int createPropertyIndex(String docPath, int limit) throws Exception {
-        // Read the file before starting indexing
         File file = new File(docPath);
-
         List<List<String>> lines = new ArrayList<>();
-        try {
 
-            // Create an object of filereader
-            // class with CSV file as a parameter.
-            FileReader filereader = new FileReader(file);
-
-            // create csvReader object passing
-            // file reader as a parameter
-            CSVReader csvReader = new CSVReader(filereader);
+        // Leer CSV con OpenCSV
+        try (CSVReader csvReader = new CSVReader(new FileReader(file))) {
             String[] nextRecord;
-            List<String> rows = new ArrayList<>();
             int count = 0;
-            // we are going to read data line by line
-            while ((nextRecord = csvReader.readNext()) != null && count < limit) {
-                for (String cell : nextRecord) {
-//                    System.out.print(cell+ " ");
-                    rows.add(cell);
-                }
-                lines.add(rows);
-                rows = new ArrayList<>();
-                System.out.println();
+            while ((nextRecord = csvReader.readNext()) != null && (limit == 0 || count < limit)) {
+                lines.add(Arrays.asList(nextRecord));
                 count++;
             }
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
-        Map<String, Integer> map = new HashMap<String, Integer>();
-        List<String> host = lines.getFirst();
+        if (lines.isEmpty()) {
+            System.err.println("El CSV está vacío.");
+            return 0;
+        }
 
-        //atributos elena
-        map.put("id", host.indexOf("id"));
-        map.put("listing_url", host.indexOf("listing_url"));
-        map.put("name", host.indexOf("name"));
-        map.put("description", host.indexOf("description"));
-        map.put("neighborhood_overview", host.indexOf("neighborhood_overview"));
-        map.put("neighbourhood_cleansed", host.indexOf("neighbourhood_cleansed"));
-        map.put("latitude", host.indexOf("latitude"));
-        map.put("longitude", host.indexOf("longitude"));
-        map.put("property_type", host.indexOf("property_type"));
-        map.put("bathrooms", host.indexOf("bathrooms"));
-        map.put("bathrooms_text", host.indexOf("bathrooms_text"));
-        map.put("bedrooms", host.indexOf("bedrooms"));
-        map.put("amenities", host.indexOf("amenities"));
-        map.put("price", host.indexOf("price"));
-        map.put("number_of_reviews", host.indexOf("number_of_reviews"));
-        map.put("review_scores_rating", host.indexOf("review_scores_rating"));
+        // Cabecera y mapa de índices
+        List<String> header = lines.get(0);
+        Map<String, Integer> map = new HashMap<>();
+        map.put("id", header.indexOf("id"));
+        map.put("listing_url", header.indexOf("listing_url"));
+        map.put("name", header.indexOf("name"));
+        map.put("description", header.indexOf("description"));
+        map.put("neighborhood_overview", header.indexOf("neighborhood_overview"));
+        map.put("neighbourhood_cleansed", header.indexOf("neighbourhood_cleansed"));
+        map.put("latitude", header.indexOf("latitude"));
+        map.put("longitude", header.indexOf("longitude"));
+        map.put("property_type", header.indexOf("property_type"));
+        map.put("bathrooms", header.indexOf("bathrooms"));
+        map.put("bathrooms_text", header.indexOf("bathrooms_text"));
+        map.put("bedrooms", header.indexOf("bedrooms"));
+        map.put("amenities", header.indexOf("amenities"));
+        map.put("price", header.indexOf("price"));
+        map.put("number_of_reviews", header.indexOf("number_of_reviews"));
+        map.put("review_scores_rating", header.indexOf("review_scores_rating"));
 
-        for (List<String> row: lines) {
+        // Indexar solo las filas, saltando la cabecera
+        for (List<String> row : lines.subList(1, lines.size())) {
             try {
                 indexEntry(map, row);
             } catch (Exception e) {
@@ -298,37 +318,9 @@ public class LukeIndex {
             }
         }
 
-
         return writer.getDocStats().numDocs;
-        // eso no funciona :(
-//        Scanner inputStream;
-
-//        try {
-//            inputStream = new Scanner(file);
-//            int count = 0
-//            while (inputSteam.hasNext() && count < 101) {
-//                String line = inputStream.next();
-//                String[] values = line.split(",");
-//                lines.add(Arrays.asList(values));
-//                count++;
-//            }
-//            inputStream.close();
-//        } catch (FileNotFoundException e) {
-//            e.printStackTrace();
-//        }
-
-        // the following code lets you iterate through the 2-dimensional array
-//        int lineNo = 1;
-//        for(List<String> line: lines) {
-//            int columnNo = 1;
-//            for (String value: line) {
-//                System.out.println("Line " + lineNo + " Column " + columnNo + ": " + value);
-//                columnNo++;
-//            }
-//            lineNo++;
-//        }
-
     }
+
 
     public void close() throws CorruptIndexException, IOException{
         try {
