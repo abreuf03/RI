@@ -138,15 +138,16 @@ public class Consultas {
 
     }
 
-    //Apartado 4
+        //Apartado 4
     //Crear consultas donde la salida esté ordenada siguiendo un criterio distinto
     //al valor de similitud entre documento y consulta
 
     public static void ordenarConsulta(IndexSearcher searcher) throws Exception{
-        QueryParser parser = new QueryParser("descripcion", analyzer);
-        Query query = parser.parse("apartamento");
+        QueryParser parser = new QueryParser("description", analyzer);
+        Query query = parser.parse("beach"); //buscamos apartamentos en la playa y los ordenamos por precio y reseñas
 
         SortField sf = new SortField("price", SortField.Type.DOUBLE, false); //false para que sea ascendente, primero los más baratos
+        sf.setMissingValue(Double.POSITIVE_INFINITY); // documentos sin precio van al final
         Sort orden = new Sort(sf);
 
         TopFieldDocs results = searcher.search(query, 10, orden);
@@ -156,7 +157,19 @@ public class Consultas {
         System.out.println("\n--- Resultados ordenados por precio ---");
         for (ScoreDoc sd : results.scoreDocs) {
             Document d = storedFields.document(sd.doc);
-            System.out.println(d.get("name") + " - " + d.get("price") + " $");
+            //  DEBUG: imprimir todos los campos almacenados del documento
+           // System.out.println("=== Documento ===");
+            //for (IndexableField f : d.getFields()) {
+            //    System.out.println(f.name() + " -> " + f.stringValue());
+            //}
+
+            IndexableField priceField = d.getField("price");
+            if (priceField == null) {
+                System.out.println(d.get("name") + " - (sin precio)");
+            } else {
+                double price = priceField.numericValue().doubleValue();
+                System.out.println(d.get("name") + " - " + price + " $");
+            }
         }
 
         sf = new SortField("review_scores_rating", SortField.Type.DOUBLE,true);
@@ -166,7 +179,7 @@ public class Consultas {
         System.out.println("\n--- Resultados ordenados por puntuación de reseña ---");
         for (ScoreDoc sd : results.scoreDocs) {
             Document d = storedFields.document(sd.doc);
-            System.out.println(d.get("name") + " - " + d.get("review_score_rating") + " stars");
+            System.out.println(d.get("name") + " - " + d.getField("review_scores_rating").numericValue() + " stars");
         }
         
     }
@@ -206,6 +219,35 @@ public class Consultas {
             System.out.println(d.get("name") + " - " + d.get("location"));
         }
     }
+
+    //Apartado 6
+    //Para los grupos de 2 personas, 
+    //crear consultas que involucren de forma simultánea a dos índices utilizando un MultiReader o ParallelCompositeReader
+    public static void consultaMulti(DirectoryReader searcherP, DirectoryReader searcherH) throws Exception{
+
+        ParallelCompositeReader parallelReader = new ParallelCompositeReader(searcherP, searcherH);
+        IndexSearcher searcher = new IndexSearcher(parallelReader);
+
+        TermQuery barrioQuery = new TermQuery(new Term("neighbourhood_cleansed", "Venice"));
+        TermQuery superhostQuery = new TermQuery(new Term("host_is_superhost", "yes"));
+
+        BooleanQuery combinedQuery = new BooleanQuery.Builder()
+                .add(barrioQuery, BooleanClause.Occur.MUST)
+                .add(superhostQuery, BooleanClause.Occur.MUST)
+                .build();
+
+        TopDocs results = searcher.search(combinedQuery, 10);
+        StoredFields storedFields = searcher.storedFields();
+
+        for (ScoreDoc sd : results.scoreDocs) {
+            Document d = storedFields.document(sd.doc);
+            System.out.println(d.get("name") + " | Barrio: " + d.get("neighbourhood_cleansed")
+                            + " | Host: " + d.get("host_name"));
+        }
+
+                
+    }
+
 
      public static void main(String[] args) throws Exception {
         String indexProperties = args[0];
