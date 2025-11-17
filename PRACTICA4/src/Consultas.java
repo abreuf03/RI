@@ -22,12 +22,11 @@ public class Consultas {
 
     private static final Analyzer analyzer = new StandardAnalyzer();
 
-    // not complete yet
     // Apartado 1
     // Crear consultas utilizando el QueryParser para cada uno de los dos índices
     // de forma independiente.
     public static void independienteConsulta(IndexSearcher indexPSearcher, IndexSearcher indexHSearcher) throws IOException {
-        String column1 = "description";
+        String column1 = "neighborhood_overview";
         String column2 = "host_about";
         QueryParser parser1 = new QueryParser(column1, analyzer);
         QueryParser parser2 = new QueryParser(column2, analyzer);
@@ -51,11 +50,13 @@ public class Consultas {
 
         for (ScoreDoc hit : hits1.scoreDocs) {
             Document doc = storedFieldsP.document(hit.doc);
-            String cuerpo = doc.get(column2);
+            String cuerpo = doc.get(column1);
             int id = Integer.parseInt(doc.get("id"));
+            String sth = doc.get("neighborhood_overview");
             System.out.println("--------------------------------------------------");
             System.out.println("ID: " + id);
             System.out.println("Descripción: " + cuerpo);
+            System.out.println("Something: " + sth);
             System.out.println();
         }
 
@@ -70,7 +71,6 @@ public class Consultas {
         }
     }
 
-    // done
     // Apartado 2
     // Crear consultas que involucren a valores numéricos, exactas y por rango,
     // sobre alguno de los índices
@@ -122,20 +122,26 @@ public class Consultas {
         }
     }
 
-    // no se que pasa aqui ;w;
     // Apartado 3
     // Crear BooleanQuerys que involucren a distintos campos y con distintas
     // BooleanClause sobre alguno de los índices.
     public static void consultaBooleana(IndexSearcher indexHSearcher) throws IOException {
-        Query q1 = new TermQuery(new Term("host_is_superhost", "no"));
-       BooleanQuery.Builder bqBuilder = new BooleanQuery.Builder();
-       bqBuilder.add(q1, BooleanClause.Occur.MUST);
-       BooleanQuery bq1 = bqBuilder.build();
 
-       TopDocs hits = indexHSearcher.search(bq1, 10);
+        Query q1 = new TermQuery(new Term("host_about", "cool"));
+        BooleanQuery.Builder bqBuilder = new BooleanQuery.Builder();
+        bqBuilder.add(q1, BooleanClause.Occur.MUST);
+        BooleanQuery bq1 = bqBuilder.build();
+
+        TopDocs hits = indexHSearcher.search(bq1, 10);
         System.out.println(hits.totalHits.value() + " documentos encontrados");
         StoredFields storedFields = indexHSearcher.storedFields();
 
+        for (ScoreDoc hit : hits.scoreDocs) {
+            Document doc = storedFields.document(hit.doc);
+            String host_about = doc.get("host_about");
+            System.out.println("--------------------------------------------------");
+            System.out.println("About the host: "+ host_about);
+        }
     }
 
     //Apartado 4
@@ -208,10 +214,10 @@ public class Consultas {
     }
 
      public static void main(String[] args) throws Exception {
-        String indexProperties = args[0];
-        String indexHosts = args[1];
-//        String indexProperties = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/propIndex";
-//        String indexHosts = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/hostIndex";
+//        String indexProperties = args[0];
+//        String indexHosts = args[1];
+        String indexProperties = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/propIndex";
+        String indexHosts = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/hostIndex";
         FSDirectory dirP = FSDirectory.open(Paths.get(indexProperties));
         DirectoryReader readerP = DirectoryReader.open(dirP);
         IndexSearcher indexP = new IndexSearcher(readerP);
@@ -221,9 +227,9 @@ public class Consultas {
         IndexSearcher indexH = new IndexSearcher(readerH);
 //        ordenarConsulta(indexP);
 
-//        independienteConsulta(indexP, indexH);
+        independienteConsulta(indexP, indexH);
 //        consultaNumericos(indexP);
-         consultaBooleana(indexH);
+//        consultaBooleana(indexH);
     }
 }
 

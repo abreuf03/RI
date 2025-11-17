@@ -137,7 +137,13 @@ public class LukeIndex {
                     case "number_of_reviews":
                     case "bathrooms":
                         try {
-                            int num = Integer.parseInt(val.replaceAll("[^0-9]", ""));
+                            int num;
+                            if (val.isEmpty()) {
+                                num = 0;
+                            } else {
+                                double parsed = Double.parseDouble(val);
+                                num = (int) parsed;
+                            }
                             doc.add(new IntPoint(attr, num));
                             doc.add(new StoredField(attr, num));
                         } catch (Exception e) {
@@ -186,7 +192,7 @@ public class LukeIndex {
                     case "host_is_superhost":
                         if ("t".equals(val)) {
                             doc.add(new TextField(attr, "yes", Field.Store.YES));
-                        } else if ("f".equals(val)) {
+                        } else if ("f".equals(val) || val.isEmpty()) {
                             doc.add(new TextField(attr, "no", Field.Store.YES));
                         } else {
                         System.out.println("Invalid value for host_is_superhost: " + val);
