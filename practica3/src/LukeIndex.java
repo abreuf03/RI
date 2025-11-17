@@ -66,7 +66,7 @@ public class LukeIndex {
         for (String attr : map.keySet()) {
             String val = values.get(map.get(attr));
              if (attr.equals(val)) { // No añadir los nombres de campos
-                ;
+                continue;
             } else {
                 System.out.println("Attribute: " + attr + ", Value: " + val);
 
