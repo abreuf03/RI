@@ -128,8 +128,16 @@ public class Consultas {
     public static void consultaBooleana(IndexSearcher indexHSearcher) throws IOException {
 
         Query q1 = new TermQuery(new Term("host_about", "cool"));
+        Query q2 = new TermQuery(new Term("host_response_time", "day"));
+        Query q3 = new TermQuery(new Term("host_neighbourhood", "Venice"));
+        BooleanClause bc1 = new BooleanClause(q1, BooleanClause.Occur.MUST);
+        BooleanClause bc2 = new BooleanClause(q2, BooleanClause.Occur.SHOULD);
+        BooleanClause bc3 = new BooleanClause(q3, BooleanClause.Occur.SHOULD);
+
         BooleanQuery.Builder bqBuilder = new BooleanQuery.Builder();
-        bqBuilder.add(q1, BooleanClause.Occur.MUST);
+        bqBuilder.add(bc1);
+        bqBuilder.add(bc2);
+        bqBuilder.add(bc3);
         BooleanQuery bq1 = bqBuilder.build();
 
         TopDocs hits = indexHSearcher.search(bq1, 10);
@@ -141,8 +149,12 @@ public class Consultas {
             String host_about = doc.get("host_about");
             System.out.println("--------------------------------------------------");
             System.out.println("About the host: "+ host_about);
+            System.out.println("Response time: " + doc.get("host_response_time"));
+            System.out.println("Host neighbourhood: " + doc.get("host_neighbourhood"));
+//            System.out.println(indexHSearcher.explain(q1, hit.doc));
         }
     }
+
 
     //Apartado 4
     //Crear consultas donde la salida esté ordenada siguiendo un criterio distinto
@@ -168,13 +180,13 @@ public class Consultas {
         sf = new SortField("review_scores_rating", SortField.Type.DOUBLE,true);
         orden = new Sort(sf);
         results = searcher.search(query, 10, orden);
-        
+
         System.out.println("\n--- Resultados ordenados por puntuación de reseña ---");
         for (ScoreDoc sd : results.scoreDocs) {
             Document d = storedFields.document(sd.doc);
             System.out.println(d.get("name") + " - " + d.get("review_score_rating") + " stars");
         }
-        
+
     }
 
     //Apartado 5
@@ -183,7 +195,7 @@ public class Consultas {
     public static void consultaGeografica(IndexSearcher searcher) throws Exception{
         double lat = 33.95779;
         double lon = -118.4326;
-        double radio = 2000; 
+        double radio = 2000;
 
         Query geoQuery = LatLonPoint.newDistanceQuery("location", lat, lon, radio);
         TopDocs results = searcher.search(geoQuery, 10);
@@ -227,9 +239,9 @@ public class Consultas {
         IndexSearcher indexH = new IndexSearcher(readerH);
 //        ordenarConsulta(indexP);
 
-        independienteConsulta(indexP, indexH);
+//        independienteConsulta(indexP, indexH);
 //        consultaNumericos(indexP);
-//        consultaBooleana(indexH);
+        consultaBooleana(indexH);
     }
 }
 

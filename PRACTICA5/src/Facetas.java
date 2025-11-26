@@ -67,20 +67,14 @@ public class Facetas {
         // Configurar facetas normales
         facetsConfig.setMultiValued("neighbourhood", false);
         facetsConfig.setMultiValued("property_type", false);
-    }
-/* 
-    private Document getDocument(Map<String, Integer> map, List<String> values) {
-        Document doc = new Document();
+        facetsConfig.setMultiValued("host_name", true);
+        facetsConfig.setMultiValued("host_location", true);
+        facetsConfig.setMultiValued("host_neighbourhood", true);
+        facetsConfig.setMultiValued("host_is_superhost", true);
+        facetsConfig.setMultiValued("host_since", true);
 
-        for (String attr: map.keySet()) {
-            doc.add(new StringField(attr, values.get(map.get(attr)), Field.Store.YES));
-            System.out.println("Attribute: "+attr+", Value: "+values.get(map.get(attr)));
-        }
-//        Field idField = new StringField("id", "fff", Field.Store.YES);
-//        ...
-//        doc.add(idField);
-        return doc;
-    }*/
+    }
+
     private Document getDocument(Map<String, Integer> map, List<String> values) {
         Document doc = new Document();
 
@@ -189,13 +183,12 @@ public class Facetas {
                         }
                         break;
 
+
                     case "description":
                     case "name":
                     case "neighborhood_overview":
                     case "bathrooms_text":
-                    case "host_neighbourhood":
                     case "host_about":
-                    case "host_location":
                     case "host_response_time":
                         String cleanData = val
                         .replaceAll("<[^>]+>", ""); //eliminar etiquetas de HTML
@@ -216,12 +209,19 @@ public class Facetas {
                         doc.add(new TextField(attr, cleanAmenities, Field.Store.YES));
                         break;
 
+                    // practica5
+                    case "host_location":
+                    case "host_neighbourhood":
+                        String cleanData = val.replaceAll("<[^>]+>", "");
+                        doc.add(new FacetField(attr, cleanData));
+
                     case "host_since":
                         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
                         try {
                             Date date = sdf.parse(val);
                             doc.add(new LongPoint("host_since", date.getTime()));
                             doc.add(new StoredField("host_since", date.getTime()));
+                            System.out.println(date.getTime());
                         } catch (Exception e) {
                             System.err.println("Error parsing date: " + e.getMessage());
                         }
@@ -500,16 +500,21 @@ public class Facetas {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 5) {
-            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
-            return;
-        }
+//        if (args.length < 5) {
+//            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
+//            return;
+//        }
+//
+//        String csvPath = args[0];         // Ruta al CSV
+//        String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
+//        String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
+//        int limit = Integer.parseInt(args[3]); // Número máximo de filas a indexar (0 = todas)
+//        String mode = args[4];             // "crear" o "append"
 
-        String csvPath = args[0];         // Ruta al CSV
-        String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
-        String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
-        int limit = Integer.parseInt(args[3]); // Número máximo de filas a indexar (0 = todas)
-        String mode = args[4];             // "crear" o "append"
+        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
+        String propIndexPath = "./facetIndex";
+        int limit = 10;
+        String mode = "crear";
 
         // Analizador y similitud de Lucene
         Analyzer analyzer = new StandardAnalyzer();
