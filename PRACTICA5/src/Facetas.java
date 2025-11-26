@@ -4,6 +4,8 @@ import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.shingle.ShingleAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.*;
+import org.apache.lucene.facet.*;
+import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -27,7 +29,6 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 import com.opencsv.*;
-import com.opencsv.exceptions.CsvValidationException;
 
 // practica 5
 import org.apache.lucene.facet.FacetsConfig;
@@ -55,20 +56,14 @@ public class Facetas {
     private DirectoryTaxonomyWriter taxoWriter;
 
 
-    public Facetas(String indexPath, Analyzer analyzer, Similarity similarity, String mode) throws IOException {
+    public Facetas(String indexPath, Analyzer analyzer, Similarity similarity) throws IOException {
         this.indexPath = indexPath;
         this.analyzer = analyzer;
         this.similarity = similarity;
         FSDirectory idxDir = FSDirectory.open(Paths.get(indexPath));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
-        
-        if(mode.equals("crear")){
-            config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
-        }
-        else{
-            config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
-        }
-        
+
+        config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
         config.setSimilarity(similarity);
         writer = new IndexWriter(idxDir, config);
 
@@ -85,7 +80,7 @@ public class Facetas {
         facetsConfig.setMultiValued("host_location", true);
         facetsConfig.setMultiValued("host_neighbourhood", true);
         facetsConfig.setMultiValued("host_is_superhost", true);
-        facetsConfig.setMultiValued("host_since", true);
+        facetsConfig.setHierarchical("host_since", true);
 
     }
 
@@ -221,19 +216,20 @@ public class Facetas {
                         doc.add(new TextField(attr, cleanAmenities, Field.Store.YES));
                         break;
 
+                    // TODO: add facets here
                     // practica5
                     case "host_location":
                     case "host_neighbourhood":
-                        String cleanData = val.replaceAll("<[^>]+>", "");
+                        cleanData = val.replaceAll("<[^>]+>", "");
                         doc.add(new FacetField(attr, cleanData));
-
+                        break;
                     case "host_since":
-                        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+                        String[] date = (val.split("-"));
                         try {
-                            Date date = sdf.parse(val);
-                            doc.add(new LongPoint("host_since", date.getTime()));
-                            doc.add(new StoredField("host_since", date.getTime()));
-                            System.out.println(date.getTime());
+                            String year = date[0];
+                            String month = date[1];
+                            String day = date[2];
+                            doc.add(new FacetField(attr, year, month, day));
                         } catch (Exception e) {
                             System.err.println("Error parsing date: " + e.getMessage());
                         }
@@ -440,7 +436,7 @@ public class Facetas {
         }
     }
 
-    public int createBothIndices(String docPath, int limit) throws Exception {
+    public int createBothIndices(String docPath, int limit, String cat) throws Exception {
         File file = new File(docPath);
         List<List<String>> lines = new ArrayList<>();
 
@@ -451,7 +447,7 @@ public class Facetas {
             List<String> rows = new ArrayList<>();
             int count = 0;
 
-            while ((nextRecord = csvReader.readNext()) != null && (limit == 0 || count < limit)) {
+            while ((nextRecord = csvReader.readNext()) != null && (limit == 0 || count <= limit)) {
                 for (String cell : nextRecord) {
                     rows.add(cell);
                 }
@@ -466,46 +462,45 @@ public class Facetas {
 
         if (lines.isEmpty()) return 0;
 
-        List<String> header = lines.get(0);
+        List<String> header = lines.getFirst();
 
         // Mapas para host y propiedad
-        Map<String, Integer> hostMap = new HashMap<>();
-        hostMap.put("host_url", header.indexOf("host_url"));
-        hostMap.put("host_name", header.indexOf("host_name"));
-        hostMap.put("host_since", header.indexOf("host_since"));
-        hostMap.put("host_location", header.indexOf("host_location"));
-        hostMap.put("host_about", header.indexOf("host_about"));
-        hostMap.put("host_response_time", header.indexOf("host_response_time"));
-        hostMap.put("host_is_superhost", header.indexOf("host_is_superhost"));
-        hostMap.put("host_neighbourhood", header.indexOf("host_neighbourhood"));
+        Map<String, Integer> map = new HashMap<>();
+        if (cat.equals("host")) {
+            map.put("host_url", header.indexOf("host_url"));
+            map.put("host_name", header.indexOf("host_name"));
+            map.put("host_since", header.indexOf("host_since"));
+            map.put("host_location", header.indexOf("host_location"));
+            map.put("host_about", header.indexOf("host_about"));
+            map.put("host_response_time", header.indexOf("host_response_time"));
+            map.put("host_is_superhost", header.indexOf("host_is_superhost"));
+            map.put("host_neighbourhood", header.indexOf("host_neighbourhood"));
 
-        Map<String, Integer> propMap = new HashMap<>();
-        propMap.put("id", header.indexOf("id"));
-        propMap.put("listing_url", header.indexOf("listing_url"));
-        propMap.put("name", header.indexOf("name"));
-        propMap.put("description", header.indexOf("description"));
-        propMap.put("neighborhood_overview", header.indexOf("neighborhood_overview"));
-        propMap.put("neighbourhood_cleansed", header.indexOf("neighbourhood_cleansed"));
-        propMap.put("latitude", header.indexOf("latitude"));
-        propMap.put("longitude", header.indexOf("longitude"));
-        propMap.put("property_type", header.indexOf("property_type"));
-        propMap.put("bathrooms", header.indexOf("bathrooms"));
-        propMap.put("bathrooms_text", header.indexOf("bathrooms_text"));
-        propMap.put("bedrooms", header.indexOf("bedrooms"));
-        propMap.put("amenities", header.indexOf("amenities"));
-        propMap.put("price", header.indexOf("price"));
-        propMap.put("number_of_reviews", header.indexOf("number_of_reviews"));
-        propMap.put("review_scores_rating", header.indexOf("review_scores_rating"));
+        } else if (cat.equals("prop")) {
+            map.put("id", header.indexOf("id"));
+            map.put("listing_url", header.indexOf("listing_url"));
+            map.put("name", header.indexOf("name"));
+            map.put("description", header.indexOf("description"));
+            map.put("neighborhood_overview", header.indexOf("neighborhood_overview"));
+            map.put("neighbourhood_cleansed", header.indexOf("neighbourhood_cleansed"));
+            map.put("latitude", header.indexOf("latitude"));
+            map.put("longitude", header.indexOf("longitude"));
+            map.put("property_type", header.indexOf("property_type"));
+            map.put("bathrooms", header.indexOf("bathrooms"));
+            map.put("bathrooms_text", header.indexOf("bathrooms_text"));
+            map.put("bedrooms", header.indexOf("bedrooms"));
+            map.put("amenities", header.indexOf("amenities"));
+            map.put("price", header.indexOf("price"));
+            map.put("number_of_reviews", header.indexOf("number_of_reviews"));
+            map.put("review_scores_rating", header.indexOf("review_scores_rating"));
+
+        }
+
 
         // Iterar filas y crear ambos documentos
         for (int i = 1; i < lines.size(); i++) { // saltar header
             List<String> row = lines.get(i);
-
-            // Documento propiedad
-            indexEntry(propMap, row);
-
-            // Documento host
-            indexEntry(hostMap, row);
+            indexEntry(map, row);
         }
 
         return writer.getDocStats().numDocs;
@@ -513,107 +508,130 @@ public class Facetas {
 
     public static void main(String[] args) throws Exception {
         //"Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
+        if (args.length < 5) {
+            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
+            return;
+        }
 
+        String csvPath = args[1];         // Ruta al CSV
+        String propIndexPath = args[2];    // Ruta donde se creará el índice de propiedad
+        String hostIndexPath = args[3];    // Ruta donde se creará el índice de anfitrión
+        int limit = Integer.parseInt(args[4]); // Número máximo de filas a indexar (0 = todas)
+        String modo = args[5];
 
-        String modo = args[0]; //indexar ó facetas
-
-        if(modo.equals("indexar")){ // csv_path indexP indexH limit crear/append
-            String csvPath = args[1];         // Ruta al CSV
-            String propIndexPath = args[2];    // Ruta donde se creará el índice de propiedad
-            String hostIndexPath = args[3];    // Ruta donde se creará el índice de anfitrión
-            int limit = Integer.parseInt(args[4]); // Número máximo de filas a indexar (0 = todas)
-            String mode = args[5];
+//        String modo; // "indexar", "facetas_p", "facetas_h"
 //        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-//        String propIndexPath = "./facetIndex";
+//        String propIndexPath = "./propFacet";
+//        String hostIndexPath = "./hostFacet";
 //        int limit = 10;
-//        String mode = "crear";
+
+
+        if(modo.equals("indexar")){
 
             // Analizador y similitud de Lucene
             Analyzer analyzer = new StandardAnalyzer();
             Similarity similarity = new ClassicSimilarity();
 
             // Crear indexadores
-            Facetas propFacetas = new Facetas(propIndexPath, analyzer, similarity, mode);
-            Facetas hostIndexador = new Facetas(hostIndexPath, analyzer, similarity, mode);
+            Facetas propFacetas = new Facetas(propIndexPath, analyzer, similarity);
+            Facetas hostFacets = new Facetas(hostIndexPath, analyzer, similarity);
 
             // Indexar ambos índices simultáneamente
-            int numDocsProp = propFacetas.createBothIndices(csvPath, limit);
+            int numDocsProp = propFacetas.createBothIndices(csvPath, limit, "prop");
             System.out.println("Número de documentos indexados de propiedad: " + numDocsProp);
 
-            int numDocsHost = hostIndexador.createBothIndices(csvPath, limit);
+            int numDocsHost = hostFacets.createBothIndices(csvPath, limit, "host");
             System.out.println("Número de documentos indexados de anfitrión: " + numDocsHost);
 
             // Cerrar indexadores
             propFacetas.close();
-            hostIndexador.close();
+            hostFacets.close();
         }
-        else if(modo.equals("facetas")){
-            String indexP = args[1];
-
-            FSDirectory dir = FSDirectory.open(Paths.get(indexP));
+//        else if(modo.equals("facetas_p")){
+//            String indexP = args[1];
+//
+//            FSDirectory dir = FSDirectory.open(Paths.get(indexP));
+//            IndexReader reader = DirectoryReader.open(dir);
+//            IndexSearcher searcher = new IndexSearcher(reader);
+//
+//            // Abrir taxonomía
+//            FSDirectory taxoDir = FSDirectory.open(Paths.get(indexP + "_taxo"));
+//            DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoDir);
+//
+//            FacetsConfig config = new FacetsConfig();
+//
+//            Query query = new MatchAllDocsQuery();
+//
+//            // Recolectar facetas
+//            FacetsCollector fc = new FacetsCollector();
+//            TopDocs hits = FacetsCollector.search(searcher, query, 10, fc);
+//
+//            // FACETAS CATEGÓRICAS
+//            Facets facets = new FastTaxonomyFacetCounts(taxoReader, config, fc);
+//
+//            System.out.println("\n===== FACETAS CATEGÓRICAS =====");
+//            FacetResult fr1 = facets.getTopChildren(10, "property_type");
+//            System.out.println(fr1);
+//            FacetResult fr2 = facets.getTopChildren(10, "neighbourhood_cleansed");
+//            System.out.println(fr2);
+//
+//            // FACETAS NUMÉRICAS POR RANGO
+//            LongRange[] priceRanges = new LongRange[] {
+//                new LongRange("0-100", 0L, true, 100L, true),
+//                new LongRange("101-200", 101L, true, 200L, true),
+//                new LongRange("201-500", 201L, true, 500L, true),
+//                new LongRange("500+", 501L, true, Long.MAX_VALUE, true)
+//            };
+//            LongRangeFacetCounts priceFacets = new LongRangeFacetCounts("price", fc, priceRanges);
+//            FacetResult priceResult = priceFacets.getAllChildren("price");
+//            System.out.println("\n===== FACETAS NUMÉRICAS: price =====");
+//            System.out.println(priceResult);
+//
+//            LongRange[] reviewsRanges = new LongRange[] {
+//                new LongRange("0-10", 0L, true, 10L, true),
+//                new LongRange("11-50", 11L, true, 50L, true),
+//                new LongRange("51-200", 51L, true, 200L, true),
+//                new LongRange("200+", 201L, true, Long.MAX_VALUE, true)
+//            };
+//            LongRangeFacetCounts reviewsFacets = new LongRangeFacetCounts("number_of_reviews", fc, reviewsRanges);
+//            FacetResult reviewsResult = reviewsFacets.getAllChildren("number_of_reviews");
+//            System.out.println("\n===== FACETAS NUMÉRICAS: number_of_reviews =====");
+//            System.out.println(reviewsResult);
+//
+//            // Mostrar primeros resultados
+//            hits = searcher.search(query, 5);
+//            System.out.println("\nPrimeros resultados:");
+//            StoredFields storedFields = searcher.storedFields();
+//            for (ScoreDoc sd : hits.scoreDocs) {
+//                Document d = storedFields.document(sd.doc);
+//                System.out.println("- " + d.get("name") +
+//                        " | tipo: " + d.get("property_type") +
+//                        " | barrio: " + d.get("neighbourhood_cleansed") +
+//                        " | price: " + d.get("price") +
+//                        " | reviews: " + d.get("number_of_reviews"));
+//            }
+//
+//            reader.close();
+//            taxoReader.close();
+//            return;
+//        }
+        else if (modo.equals("facetas_h")) {
+            String indexPath = args[2];
+            String taxoPath = indexPath + "_taxo";
+            FSDirectory dir = FSDirectory.open(Paths.get(indexPath));
             IndexReader reader = DirectoryReader.open(dir);
             IndexSearcher searcher = new IndexSearcher(reader);
 
             // Abrir taxonomía
-            FSDirectory taxoDir = FSDirectory.open(Paths.get(indexP + "_taxo"));
-            DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoDir);
+            FSDirectory taxoDir = FSDirectory.open(Paths.get(taxoPath));
+            TaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoDir);
 
-            FacetsConfig config = new FacetsConfig();
+            FacetsCollectorManager fcm = new FacetsCollectorManager();
+            FacetsCollector fc = FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
 
-            Query query = new MatchAllDocsQuery();
 
-            // Recolectar facetas
-            FacetsCollector fc = new FacetsCollector();
-            TopDocs hits = FacetsCollector.search(searcher, query, 10, fc);
+           List<FacetResult> results = new ArrayList<>();
 
-            // FACETAS CATEGÓRICAS
-            Facets facets = new FastTaxonomyFacetCounts(taxoReader, config, fc);
-
-            System.out.println("\n===== FACETAS CATEGÓRICAS =====");
-            FacetResult fr1 = facets.getTopChildren(10, "property_type");
-            System.out.println(fr1);
-            FacetResult fr2 = facets.getTopChildren(10, "neighbourhood_cleansed");
-            System.out.println(fr2);
-
-            // FACETAS NUMÉRICAS POR RANGO
-            LongRange[] priceRanges = new LongRange[] {
-                new LongRange("0-100", 0L, true, 100L, true),
-                new LongRange("101-200", 101L, true, 200L, true),
-                new LongRange("201-500", 201L, true, 500L, true),
-                new LongRange("500+", 501L, true, Long.MAX_VALUE, true)
-            };
-            LongRangeFacetCounts priceFacets = new LongRangeFacetCounts("price", fc, priceRanges);
-            FacetResult priceResult = priceFacets.getAllChildren("price");
-            System.out.println("\n===== FACETAS NUMÉRICAS: price =====");
-            System.out.println(priceResult);
-
-            LongRange[] reviewsRanges = new LongRange[] {
-                new LongRange("0-10", 0L, true, 10L, true),
-                new LongRange("11-50", 11L, true, 50L, true),
-                new LongRange("51-200", 51L, true, 200L, true),
-                new LongRange("200+", 201L, true, Long.MAX_VALUE, true)
-            };
-            LongRangeFacetCounts reviewsFacets = new LongRangeFacetCounts("number_of_reviews", fc, reviewsRanges);
-            FacetResult reviewsResult = reviewsFacets.getAllChildren("number_of_reviews");
-            System.out.println("\n===== FACETAS NUMÉRICAS: number_of_reviews =====");
-            System.out.println(reviewsResult);
-
-            // Mostrar primeros resultados
-            hits = searcher.search(query, 5);
-            System.out.println("\nPrimeros resultados:");
-            StoredFields storedFields = searcher.storedFields();
-            for (ScoreDoc sd : hits.scoreDocs) {
-                Document d = storedFields.document(sd.doc);
-                System.out.println("- " + d.get("name") +
-                        " | tipo: " + d.get("property_type") +
-                        " | barrio: " + d.get("neighbourhood_cleansed") +
-                        " | price: " + d.get("price") +
-                        " | reviews: " + d.get("number_of_reviews"));
-            }
-
-            reader.close();
-            taxoReader.close();
-            return;
         }
 
 

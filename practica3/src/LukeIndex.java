@@ -183,7 +183,7 @@ public class LukeIndex {
                         try {
                             Date date = sdf.parse(val);
                             doc.add(new LongPoint("host_since", date.getTime()));
-                            doc.add(new StoredField("host_since", date.getTime()));
+                            doc.add(new StoredField("host_since", sdf.format(date)));
                         } catch (Exception e) {
                             System.err.println("Error parsing date: " + e.getMessage());
                         }
@@ -338,16 +338,16 @@ public class LukeIndex {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 4) {
-            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas>");
-            return;
-        }
+//        if (args.length < 4) {
+//            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas>");
+//            return;
+//        }
 
-        String csvPath = args[0];      // Ruta al CSV
-        String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
-        String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrion
-        int limit = Integer.parseInt(args[3]); // Número máximo de filas a indexar (0 = todas)
-        String mode = args[4];
+        String csvPath ="/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";      // Ruta al CSV
+        String propIndexPath = "./prop";    // Ruta donde se creará el índice de propiedad
+        String hostIndexPath = "./host";    // Ruta donde se creará el índice de anfitrion
+        int limit = 10; // Número máximo de filas a indexar (0 = todas)
+        String mode = "crear";
 
         // Analizador y similaridad de Lucene
         Analyzer analyzer = new EnglishAnalyzer();
