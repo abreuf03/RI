@@ -6,6 +6,8 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.*;
 import org.apache.lucene.facet.*;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -21,9 +23,8 @@ import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.search.Query;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -287,7 +288,6 @@ public class Facetas {
         return doc;
     }
 
-
     private void indexEntry(Map<String, Integer> map, List<String> values) {
         System.out.println("Indexing...");
         Document doc = getDocument(map, values);
@@ -300,144 +300,7 @@ public class Facetas {
             e.printStackTrace();
         }
     }
-/* 
-    public int createHostIndex(String docPath, int limit) throws Exception {
-        // Read the file before starting indexing
-        File file = new File(docPath);
 
-        List<List<String>> lines = new ArrayList<>();
-        try {
-
-            // Create an object of filereader
-            // class with CSV file as a parameter.
-            FileReader filereader = new FileReader(file);
-
-            // create csvReader object passing
-            // file reader as a parameter
-            CSVReader csvReader = new CSVReader(filereader);
-            String[] nextRecord;
-            List<String> rows = new ArrayList<>();
-            int count = 0;
-            // we are going to read data line by line
-            while ((nextRecord = csvReader.readNext()) != null && count < limit) {
-                for (String cell : nextRecord) {
-//                    System.out.print(cell+ " ");
-                    rows.add(cell);
-                }
-                lines.add(rows);
-                rows = new ArrayList<>();
-                System.out.println();
-                count++;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        Map<String, Integer> map = new HashMap<String, Integer>();
-        List<String> host = lines.getFirst();
-        map.put("host_url", host.indexOf("host_url"));
-        map.put("host_name", host.indexOf("host_name"));
-        map.put("host_since", host.indexOf("host_since"));
-        map.put("host_location", host.indexOf("host_location"));
-        map.put("host_about", host.indexOf("host_about"));
-        map.put("host_response_time", host.indexOf("host_response_time"));
-        map.put("host_is_superhost", host.indexOf("host_is_superhost"));
-        map.put("host_neighbourhood", host.indexOf("host_neighbourhood"));
-
-        for (List<String> row : lines) {
-            try {
-                indexEntry(map, row);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-
-        return writer.getDocStats().numDocs;
-    }
-
-    public int createPropertyIndex(String docPath, int limit) throws Exception {
-        // Read the file before starting indexing
-        File file = new File(docPath);
-        List<List<String>> lines = new ArrayList<>();
-        try {
-            // Create an object of filereader class with CSV file as a parameter.
-            FileReader filereader = new FileReader(file);
-            // create csvReader object passing file reader as a parameter
-            CSVReader csvReader = new CSVReader(filereader);
-            String[] nextRecord;
-            List<String> rows = new ArrayList<>();
-            int count = 0;
-            // we are going to read data line by line
-            while ((nextRecord = csvReader.readNext()) != null && count < limit) {
-                for (String cell : nextRecord) {
-                    // System.out.print(cell+ " ");
-                    rows.add(cell);
-                }
-                lines.add(rows);
-                rows = new ArrayList<>();
-                System.out.println();
-                count++;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        Map<String, Integer> map = new HashMap<String, Integer>();
-        List<String> host = lines.getFirst(); //atributos elena
-        map.put("id", host.indexOf("id"));
-        map.put("listing_url", host.indexOf("listing_url"));
-        map.put("name", host.indexOf("name"));
-        map.put("description", host.indexOf("description"));
-        map.put("neighborhood_overview", host.indexOf("neighborhood_overview"));
-        map.put("neighbourhood_cleansed", host.indexOf("neighbourhood_cleansed"));
-        map.put("latitude", host.indexOf("latitude"));
-        map.put("longitude", host.indexOf("longitude"));
-        map.put("property_type", host.indexOf("property_type"));
-        map.put("bathrooms", host.indexOf("bathrooms"));
-        map.put("bathrooms_text", host.indexOf("bathrooms_text"));
-        map.put("bedrooms", host.indexOf("bedrooms"));
-        map.put("amenities", host.indexOf("amenities"));
-        map.put("price", host.indexOf("price"));
-        map.put("number_of_reviews", host.indexOf("number_of_reviews"));
-        map.put("review_scores_rating", host.indexOf("review_scores_rating"));
-
-        for (List<String> row: lines) {
-            try {
-                indexEntry(map, row);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        return writer.getDocStats().numDocs; // eso no funciona :(
-        
-        // Scanner inputStream;
-        // try {
-        //     inputStream = new Scanner(file);
-        //     int count = 0
-        //     while (inputSteam.hasNext() && count < 101) {
-        //         String line = inputStream.next();
-        //         String[] values = line.split(",");
-        //         lines.add(Arrays.asList(values));
-        //         count++;
-        //     }
-        //     inputStream.close();
-        // } catch (FileNotFoundException e) {
-        //     e.printStackTrace();
-        // }
-        // the following code lets you iterate through the 2-dimensional array
-        // int lineNo = 1;
-        // for(List<String> line: lines) {
-        //     int columnNo = 1;
-        //     for (String value: line) {
-        //         System.out.println("Line " + lineNo + " Column " + columnNo + ": " + value);
-        //         columnNo++;
-        //     }
-        //     lineNo++;
-        // }
-    }
-*/
     public void close() throws CorruptIndexException, IOException{
         try {
             writer.commit();
@@ -520,7 +383,136 @@ public class Facetas {
         return writer.getDocStats().numDocs;
     }
 
-    /** User runs a query and counts facets. */
+    public static void indexSearch(String indexPath, String cat, Analyzer analyzer) throws IOException {
+        IndexReader reader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+        IndexSearcher searcher = new IndexSearcher(reader);
+//        searcher.setSimilarity(similarity);
+
+        BufferedReader in = null;
+        in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        List<QueryParser> parsers = new ArrayList<>();
+        List<String> columns = new ArrayList<>();
+        int volume = 1;
+
+        // El campo cuerpo sera analizado utilizando el analyzer
+        if (cat.equals("host")) {
+            volume = 5;
+            columns.add("host_about");
+            columns.add("host_location");
+            columns.add("host_name");
+            columns.add("host_neighbourhood");
+            columns.add("information");
+            for (String s: columns) {
+                parsers.add(new QueryParser(s, analyzer));
+            }
+        } else if (cat.equals("prop")) {
+            volume = 7;
+//            parsers = new QueryParser[volume];
+//            parsers[0] = new QueryParser("description", analyzer);
+//            parsers[1] = new QueryParser("neighborhood_overview", analyzer);
+//            parsers[2] = new QueryParser("neighbourhood_cleansed", analyzer);
+//            parsers[3] = new QueryParser("property_type", analyzer);
+//            parsers[4] = new QueryParser("bathrooms_text", analyzer);
+//            parsers[5] = new QueryParser("amenities", analyzer);
+//            parsers[6] = new QueryParser("information", analyzer);
+        }
+        while (true) {
+            System.out.println("Consulta?: ");
+
+            String line = in.readLine();
+            if (line == null || line.length() == -1) {
+                break;
+            }
+            // Eliminamos caracteres blancos al inicio y al final
+            line = line.trim();
+            if (line.isEmpty()) {
+                break;
+            }
+
+            Query query;
+            TopDocs[] hits = new TopDocs[volume];
+            // Determine how many top hits do we want
+            int top = 5;
+            try {
+                for (QueryParser p: parsers) {
+                    int idx = parsers.indexOf(p);
+                    query = p.parse(line);
+                    hits[idx] = searcher.search(query, top);
+                    System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
+                }
+            } catch (ParseException e) {
+                System.out.println("Error en cadena consulta.");
+                continue;
+            }
+
+            StoredFields storedFields = searcher.storedFields();
+            ScoreDoc[] topScores;
+            topScores = new ScoreDoc[hits.length * top];
+            double min = 0.0;
+            double max = 0.0;
+
+            for (TopDocs hit: hits) {
+                for (ScoreDoc sd: hit.scoreDocs) {
+                }
+            }
+//            Arrays.sort(topScores);
+//
+//            reverse(topScores);
+//            for (float score: topScores) {
+//                System.out.println(String.format("%.2f", score));
+//            }
+//            for (ScoreDoc hit: hits[4].scoreDocs) {
+//                Document doc = storedFields.document(hit.doc);
+//                System.out.println(hit.score);
+//                String cuerpo = doc.get("host_about");
+////                    Integer id = doc.getField("ID").numericValue().intValue();
+//                System.out.println("--------------------------------------------------");
+////                    System.out.println("ID: " + id);
+//                System.out.println("host_about " + doc.get("host_about"));
+//                System.out.println("host_location " + doc.get("host_location"));
+//                System.out.println("host_neighbourhood " + doc.get("host_neighbourhood"));
+//                System.out.println("host_name " + doc.get("host_name"));
+//                System.out.println("information " + doc.get("information"));
+//                System.out.println();
+//            }
+
+//                ScoreDoc[] hits = results.scoreDocs;
+
+
+//                int numTotalHits = hits.totalHits.value();
+
+            if (line.equals("")) {
+                break;
+            }
+        }
+        try {
+            reader.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+
+        }
+    }
+    // method to reverse the array elements
+    private static void reverse(float[] a)
+    {
+        // length of an array
+        int n = a.length;
+
+        // swap the first half with the second half
+        for (int i = 0; i < n / 2; i++) {
+
+            // Store the first half elements temporarily
+            float t = a[i];
+
+            // Assign the first half
+            // to the last half
+            a[i] = a[n - i - 1];
+
+            // Assign the last half
+            // to the first half
+            a[n - i - 1] = t;
+        }
+    }
     private List<FacetResult> searchHost() throws IOException {
         DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
         IndexSearcher searcher = new IndexSearcher(indexReader);
@@ -547,25 +539,26 @@ public class Facetas {
 
         return results;
     }
+
     public static void main(String[] args) throws Exception {
         //"Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
-        if (args.length < 5) {
-            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
-            return;
-        }
+//        if (args.length < 5) {
+//            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
+//            return;
+//        }
+//
+//        String csvPath = args[1];         // Ruta al CSV
+//        String propIndexPath = args[2];    // Ruta donde se creará el índice de propiedad
+//        String hostIndexPath = args[3];    // Ruta donde se creará el índice de anfitrión
+//        int limit = Integer.parseInt(args[4]); // Número máximo de filas a indexar (0 = todas)
+//        String modo = args[5];
 
-        String csvPath = args[1];         // Ruta al CSV
-        String propIndexPath = args[2];    // Ruta donde se creará el índice de propiedad
-        String hostIndexPath = args[3];    // Ruta donde se creará el índice de anfitrión
-        int limit = Integer.parseInt(args[4]); // Número máximo de filas a indexar (0 = todas)
-        String modo = args[5];
-
-//        String modo = "facetas_h"; // "indexar", "facetas_p", "facetas_h"
-//        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-//        String propIndexPath = "./propFacet";
-//        String hostIndexPath = "./hostFacet";
-//        int limit = 1000;
-
+        String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
+        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
+        String propIndexPath = "./propFacet";
+        String hostIndexPath = "./hostFacet";
+        int limit = 1000;
+        indexSearch(hostIndexPath, "host", new StandardAnalyzer());
 
         if(modo.equals("indexar")){
 
