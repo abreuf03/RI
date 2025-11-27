@@ -86,7 +86,7 @@ public class Facetas {
 
     private Document getDocument(Map<String, Integer> map, List<String> values) {
         Document doc = new Document();
-
+        doc.add(new TextField("information", values.toString(), Field.Store.YES));
         for (String attr : map.keySet()) {
             String val = values.get(map.get(attr));
              if (attr.equals(val)) { // No añadir los nombres de campos
