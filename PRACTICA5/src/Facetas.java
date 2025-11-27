@@ -40,7 +40,7 @@ import org.apache.lucene.facet.FacetField;
 import org.apache.lucene.facet.FacetResult;
 import org.apache.lucene.facet.Facets;
 import org.apache.lucene.facet.FacetsCollector;
-
+import org.apache.lucene.util.IOUtils;
 
 
 public class Facetas {
@@ -56,10 +56,10 @@ public class Facetas {
     private DirectoryTaxonomyWriter taxoWriter;
 
 
-    public Facetas(String indexPath, Analyzer analyzer, Similarity similarity) throws IOException {
+    public Facetas(String indexPath) throws IOException {
         this.indexPath = indexPath;
-        this.analyzer = analyzer;
-        this.similarity = similarity;
+        this.analyzer = new StandardAnalyzer();
+        this.similarity =  new ClassicSimilarity();
         FSDirectory idxDir = FSDirectory.open(Paths.get(indexPath));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
 
@@ -220,9 +220,34 @@ public class Facetas {
                     // practica5
                     case "host_location":
                     case "host_neighbourhood":
-                        cleanData = val.replaceAll("<[^>]+>", "");
+                        if (!val.isEmpty()) {
+                            cleanData = val.replaceAll("<[^>]+>", "");
+                        } else {
+                            cleanData = "No data";
+                        }
+                        doc.add(new TextField(attr, cleanData, Field.Store.YES));
                         doc.add(new FacetField(attr, cleanData));
                         break;
+                    case "host_name":
+                        cleanData = val.replaceAll("<[^>]+>", "");
+                        doc.add(new TextField(attr, cleanData, Field.Store.YES));
+                        doc.add(new FacetField(attr, cleanData));
+                        break;
+
+                    case "host_is_superhost":
+                        if ("t".equals(val)) {
+                            doc.add(new TextField(attr, "yes", Field.Store.YES));
+                            doc.add(new FacetField("host_is_superhost", "superhost"));
+
+                        } else if ("f".equals(val)) {
+                            doc.add(new TextField(attr, "no", Field.Store.YES));
+                            doc.add(new FacetField("host_is_superhost", "not superhost"));
+
+                        } else {
+                        System.out.println("Invalid value for host_is_superhost: " + val);
+                        }
+                        break;
+
                     case "host_since":
                         String[] date = (val.split("-"));
                         try {
@@ -235,17 +260,6 @@ public class Facetas {
                         }
                         break;
 
-                    case "host_is_superhost":
-                        if ("t".equals(val)) {
-                            doc.add(new TextField(attr, "yes", Field.Store.YES));
-                           
-                        } else if ("f".equals(val)) {
-                            doc.add(new TextField(attr, "no", Field.Store.YES));
-                            
-                        } else {
-                        System.out.println("Invalid value for host_is_superhost: " + val);
-                        }
-                        break;
                     //practica5
                     case "neighbourhood_cleansed":
                         doc.add(new StringField(attr, val, Field.Store.YES));
@@ -506,6 +520,33 @@ public class Facetas {
         return writer.getDocStats().numDocs;
     }
 
+    /** User runs a query and counts facets. */
+    private List<FacetResult> searchHost() throws IOException {
+        DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+        IndexSearcher searcher = new IndexSearcher(indexReader);
+        String taxoDir = indexPath + "_taxo";
+        TaxonomyReader taxoReader = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(taxoDir)));
+        FacetsCollectorManager fcm = new FacetsCollectorManager();
+        // MatchAllDocsQuery is for "browsing" (counts facets
+        // for all non-deleted docs in the index); normally
+        // you'd use a "normal" query:
+        FacetsCollector fc =
+            FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
+
+        // Retrieve results
+        List<FacetResult> results = new ArrayList<>();
+        // Count both "Publish Date" and "Author" dimensions
+        Facets counts = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
+        results.add(counts.getTopChildren(10, "host_neighbourhood"));
+        results.add(counts.getTopChildren(10, "host_since"));
+        results.add(counts.getTopChildren(10, "host_name"));
+        results.add(counts.getTopChildren(10, "host_is_superhost"));
+        results.add(counts.getTopChildren(10, "host_location"));
+
+        IOUtils.close(indexReader, taxoReader);
+
+        return results;
+    }
     public static void main(String[] args) throws Exception {
         //"Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
         if (args.length < 5) {
@@ -519,11 +560,11 @@ public class Facetas {
         int limit = Integer.parseInt(args[4]); // Número máximo de filas a indexar (0 = todas)
         String modo = args[5];
 
-//        String modo; // "indexar", "facetas_p", "facetas_h"
+//        String modo = "facetas_h"; // "indexar", "facetas_p", "facetas_h"
 //        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
 //        String propIndexPath = "./propFacet";
 //        String hostIndexPath = "./hostFacet";
-//        int limit = 10;
+//        int limit = 1000;
 
 
         if(modo.equals("indexar")){
@@ -533,8 +574,8 @@ public class Facetas {
             Similarity similarity = new ClassicSimilarity();
 
             // Crear indexadores
-            Facetas propFacetas = new Facetas(propIndexPath, analyzer, similarity);
-            Facetas hostFacets = new Facetas(hostIndexPath, analyzer, similarity);
+            Facetas propFacetas = new Facetas(propIndexPath);
+            Facetas hostFacets = new Facetas(hostIndexPath);
 
             // Indexar ambos índices simultáneamente
             int numDocsProp = propFacetas.createBothIndices(csvPath, limit, "prop");
@@ -616,21 +657,30 @@ public class Facetas {
 //            return;
 //        }
         else if (modo.equals("facetas_h")) {
-            String indexPath = args[2];
-            String taxoPath = indexPath + "_taxo";
-            FSDirectory dir = FSDirectory.open(Paths.get(indexPath));
-            IndexReader reader = DirectoryReader.open(dir);
-            IndexSearcher searcher = new IndexSearcher(reader);
+//            String indexPath = args[2];
+//            String taxoPath = indexPath + "_taxo";
+            String indexPath = hostIndexPath;
+            String taxoPath = hostIndexPath + "_taxo";
+//            FSDirectory dir = FSDirectory.open(Paths.get(indexPath));
+//            IndexReader reader = DirectoryReader.open(dir);
+//            IndexSearcher searcher = new IndexSearcher(reader);
+//
+//            // Abrir taxonomía
+//            FSDirectory taxoDir = FSDirectory.open(Paths.get(taxoPath));
+//            TaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoDir);
+//
+//            FacetsCollectorManager fcm = new FacetsCollectorManager();
+//            FacetsCollector fc = FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
+//
+//
+//           List<FacetResult> results = new ArrayList<>();
 
-            // Abrir taxonomía
-            FSDirectory taxoDir = FSDirectory.open(Paths.get(taxoPath));
-            TaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoDir);
-
-            FacetsCollectorManager fcm = new FacetsCollectorManager();
-            FacetsCollector fc = FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
-
-
-           List<FacetResult> results = new ArrayList<>();
+            List<FacetResult> results = new Facetas(indexPath).searchHost();
+            System.out.println("Host neighbourhood: " + results.get(0));
+            System.out.println("Host since: " + results.get(1));
+            System.out.println("Host name: " + results.get(2));
+            System.out.println("Superhost: " + results.get(3));
+            System.out.println("Location: " + results.get(4));
 
         }
 
