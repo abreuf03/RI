@@ -6,24 +6,20 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.*;
 import org.apache.lucene.facet.*;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
+import org.apache.lucene.index.*;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.search.Query;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -287,7 +283,6 @@ public class Facetas {
         return doc;
     }
 
-
     private void indexEntry(Map<String, Integer> map, List<String> values) {
         System.out.println("Indexing...");
         Document doc = getDocument(map, values);
@@ -300,144 +295,7 @@ public class Facetas {
             e.printStackTrace();
         }
     }
-/* 
-    public int createHostIndex(String docPath, int limit) throws Exception {
-        // Read the file before starting indexing
-        File file = new File(docPath);
 
-        List<List<String>> lines = new ArrayList<>();
-        try {
-
-            // Create an object of filereader
-            // class with CSV file as a parameter.
-            FileReader filereader = new FileReader(file);
-
-            // create csvReader object passing
-            // file reader as a parameter
-            CSVReader csvReader = new CSVReader(filereader);
-            String[] nextRecord;
-            List<String> rows = new ArrayList<>();
-            int count = 0;
-            // we are going to read data line by line
-            while ((nextRecord = csvReader.readNext()) != null && count < limit) {
-                for (String cell : nextRecord) {
-//                    System.out.print(cell+ " ");
-                    rows.add(cell);
-                }
-                lines.add(rows);
-                rows = new ArrayList<>();
-                System.out.println();
-                count++;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        Map<String, Integer> map = new HashMap<String, Integer>();
-        List<String> host = lines.getFirst();
-        map.put("host_url", host.indexOf("host_url"));
-        map.put("host_name", host.indexOf("host_name"));
-        map.put("host_since", host.indexOf("host_since"));
-        map.put("host_location", host.indexOf("host_location"));
-        map.put("host_about", host.indexOf("host_about"));
-        map.put("host_response_time", host.indexOf("host_response_time"));
-        map.put("host_is_superhost", host.indexOf("host_is_superhost"));
-        map.put("host_neighbourhood", host.indexOf("host_neighbourhood"));
-
-        for (List<String> row : lines) {
-            try {
-                indexEntry(map, row);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-
-        return writer.getDocStats().numDocs;
-    }
-
-    public int createPropertyIndex(String docPath, int limit) throws Exception {
-        // Read the file before starting indexing
-        File file = new File(docPath);
-        List<List<String>> lines = new ArrayList<>();
-        try {
-            // Create an object of filereader class with CSV file as a parameter.
-            FileReader filereader = new FileReader(file);
-            // create csvReader object passing file reader as a parameter
-            CSVReader csvReader = new CSVReader(filereader);
-            String[] nextRecord;
-            List<String> rows = new ArrayList<>();
-            int count = 0;
-            // we are going to read data line by line
-            while ((nextRecord = csvReader.readNext()) != null && count < limit) {
-                for (String cell : nextRecord) {
-                    // System.out.print(cell+ " ");
-                    rows.add(cell);
-                }
-                lines.add(rows);
-                rows = new ArrayList<>();
-                System.out.println();
-                count++;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        Map<String, Integer> map = new HashMap<String, Integer>();
-        List<String> host = lines.getFirst(); //atributos elena
-        map.put("id", host.indexOf("id"));
-        map.put("listing_url", host.indexOf("listing_url"));
-        map.put("name", host.indexOf("name"));
-        map.put("description", host.indexOf("description"));
-        map.put("neighborhood_overview", host.indexOf("neighborhood_overview"));
-        map.put("neighbourhood_cleansed", host.indexOf("neighbourhood_cleansed"));
-        map.put("latitude", host.indexOf("latitude"));
-        map.put("longitude", host.indexOf("longitude"));
-        map.put("property_type", host.indexOf("property_type"));
-        map.put("bathrooms", host.indexOf("bathrooms"));
-        map.put("bathrooms_text", host.indexOf("bathrooms_text"));
-        map.put("bedrooms", host.indexOf("bedrooms"));
-        map.put("amenities", host.indexOf("amenities"));
-        map.put("price", host.indexOf("price"));
-        map.put("number_of_reviews", host.indexOf("number_of_reviews"));
-        map.put("review_scores_rating", host.indexOf("review_scores_rating"));
-
-        for (List<String> row: lines) {
-            try {
-                indexEntry(map, row);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        return writer.getDocStats().numDocs; // eso no funciona :(
-        
-        // Scanner inputStream;
-        // try {
-        //     inputStream = new Scanner(file);
-        //     int count = 0
-        //     while (inputSteam.hasNext() && count < 101) {
-        //         String line = inputStream.next();
-        //         String[] values = line.split(",");
-        //         lines.add(Arrays.asList(values));
-        //         count++;
-        //     }
-        //     inputStream.close();
-        // } catch (FileNotFoundException e) {
-        //     e.printStackTrace();
-        // }
-        // the following code lets you iterate through the 2-dimensional array
-        // int lineNo = 1;
-        // for(List<String> line: lines) {
-        //     int columnNo = 1;
-        //     for (String value: line) {
-        //         System.out.println("Line " + lineNo + " Column " + columnNo + ": " + value);
-        //         columnNo++;
-        //     }
-        //     lineNo++;
-        // }
-    }
-*/
     public void close() throws CorruptIndexException, IOException{
         try {
             writer.commit();
@@ -520,7 +378,136 @@ public class Facetas {
         return writer.getDocStats().numDocs;
     }
 
-    /** User runs a query and counts facets. */
+    public static void indexSearch(String indexHost, String indexProp, Analyzer analyzer, Integer top) throws IOException {
+        DirectoryReader readerH = DirectoryReader.open(FSDirectory.open(Paths.get(indexHost)));
+        DirectoryReader readerP = DirectoryReader.open(FSDirectory.open(Paths.get(indexProp)));
+        ParallelCompositeReader parallelReader = new ParallelCompositeReader(readerH, readerP);
+        IndexSearcher searcher = new IndexSearcher(parallelReader);
+
+        BufferedReader in = null;
+        in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        List<QueryParser> parsers = new ArrayList<>();
+        List<String> columns = new ArrayList<>();
+
+        columns.add("host_about");
+        columns.add("host_location");
+        columns.add("host_name");
+        columns.add("host_neighbourhood");
+        columns.add("information");
+        columns.add("property_type");
+        columns.add("bathrooms_text");
+        columns.add("description");
+        columns.add("neighbourhood_overview");
+        columns.add("neighbourhood_cleansed");
+        columns.add("amenities");
+        for (String s: columns) {
+            parsers.add(new QueryParser(s, analyzer));
+        }
+
+//        while (true) {
+        String line = null;
+        do {
+            System.out.println("Consulta?: ");
+
+            line = in.readLine();
+            if (line == null || line.length() == -1) {
+                break;
+            }
+            // Eliminamos caracteres blancos al inicio y al final
+            line = line.trim();
+            if (line.isEmpty()) {
+                break;
+            }
+
+            Query query;
+            TopDocs[] hits = new TopDocs[columns.size()];
+            // Determine how many top hits do we want
+            try {
+                for (QueryParser p: parsers) {
+                    int idx = parsers.indexOf(p);
+                    query = p.parse(line);
+                    hits[idx] = searcher.search(query, top);
+//                    System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
+                }
+            } catch (ParseException e) {
+                System.out.println("Error en cadena consulta.");
+                continue;
+            }
+
+            StoredFields storedFields = searcher.storedFields();
+            HashMap<ScoreDoc, Float> topScores;
+            topScores = new HashMap<>();
+
+            for (int i = top-1; i >= 0; i--) {
+                for (int j = 0; j < hits.length; j++) {
+                    if (hits[j].scoreDocs.length == 0) {
+                        ;
+                    } else {
+                        if (hits[j].scoreDocs.length > i) {
+                            ScoreDoc sd = hits[j].scoreDocs[i];
+                            if (topScores.size() < top) {
+                             topScores.put(sd, sd.score);
+//                            System.out.println("Add documnet: " + sd.doc + ", Score: " + sd.score);
+                            } else {
+                                ScoreDoc min = null;
+                                for (ScoreDoc ksd : topScores.keySet()) {
+                                    if (ksd.score < sd.score) {
+                                        if (min == null || ksd.score < min.score) {
+                                            min = ksd;
+                                        }
+                                    }
+                                }
+                                if (min != null) {
+                                    topScores.remove(min);
+//                                System.out.println("Remove document: " + min.doc + ", Score: " + min.score);
+                                    topScores.put(sd, sd.score);
+//                                System.out.println("Add documnet: " + sd.doc + ", Score: " + sd.score);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+//            System.out.println("Top " + topScores.size() + " documentos encontrados: ");
+
+//
+            for (ScoreDoc hit: topScores.keySet()) {
+                System.out.println(hit.doc + ", Score: " + hit.score);
+                Document doc = storedFields.document(hit.doc);
+                System.out.println("--------------------------------------------------");
+//                    System.out.println("ID: " + id);
+                System.out.println("property_type: " + doc.get("property_type"));
+//                System.out.println("description: " + doc.get("description"));
+                System.out.println("amenities: " + doc.get("amenities"));
+                System.out.println("host_about " + doc.get("host_about"));
+                System.out.println("host_location " + doc.get("host_location"));
+                System.out.println("host_neighbourhood " + doc.get("host_neighbourhood"));
+                System.out.println("host_name " + doc.get("host_name"));
+//                System.out.println("information " + doc.get("information"));
+                System.out.println();
+            }
+
+//                ScoreDoc[] hits = results.scoreDocs;
+
+
+//                int numTotalHits = hits.totalHits.value();
+
+            if (line.equals("")) {
+                break;
+            }
+            System.out.println("Si quiere poner algunas facetas, entrar 'Facetas' para cambiar el modo");
+            line = in.readLine();
+        } while (!line.equals("Facetas"));
+        try {
+            readerP.close();
+            readerH.close();
+            parallelReader.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+
+        }
+    }
+
     private List<FacetResult> searchHost() throws IOException {
         DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
         IndexSearcher searcher = new IndexSearcher(indexReader);
@@ -547,25 +534,26 @@ public class Facetas {
 
         return results;
     }
+
     public static void main(String[] args) throws Exception {
         //"Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
-        if (args.length < 5) {
-            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
-            return;
-        }
+//        if (args.length < 5) {
+//            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
+//            return;
+//        }
+//
+//        String csvPath = args[1];         // Ruta al CSV
+//        String propIndexPath = args[2];    // Ruta donde se creará el índice de propiedad
+//        String hostIndexPath = args[3];    // Ruta donde se creará el índice de anfitrión
+//        int limit = Integer.parseInt(args[4]); // Número máximo de filas a indexar (0 = todas)
+//        String modo = args[5];
 
-        String csvPath = args[1];         // Ruta al CSV
-        String propIndexPath = args[2];    // Ruta donde se creará el índice de propiedad
-        String hostIndexPath = args[3];    // Ruta donde se creará el índice de anfitrión
-        int limit = Integer.parseInt(args[4]); // Número máximo de filas a indexar (0 = todas)
-        String modo = args[5];
-
-//        String modo = "facetas_h"; // "indexar", "facetas_p", "facetas_h"
-//        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-//        String propIndexPath = "./propFacet";
-//        String hostIndexPath = "./hostFacet";
-//        int limit = 1000;
-
+        String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
+        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
+        String propIndexPath = "./propFacet";
+        String hostIndexPath = "./hostFacet";
+        int limit = 1000;
+        indexSearch(hostIndexPath, propIndexPath, new StandardAnalyzer(), 5);
 
         if(modo.equals("indexar")){
 
