@@ -6,6 +6,7 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.*;
 import org.apache.lucene.facet.*;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
+import org.apache.lucene.index.*;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
@@ -14,12 +15,6 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.search.Query;
 
@@ -383,43 +378,38 @@ public class Facetas {
         return writer.getDocStats().numDocs;
     }
 
-    public static void indexSearch(String indexPath, String cat, Analyzer analyzer) throws IOException {
-        IndexReader reader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
-        IndexSearcher searcher = new IndexSearcher(reader);
-//        searcher.setSimilarity(similarity);
+    public static void indexSearch(String indexHost, String indexProp, Analyzer analyzer, Integer top) throws IOException {
+        DirectoryReader readerH = DirectoryReader.open(FSDirectory.open(Paths.get(indexHost)));
+        DirectoryReader readerP = DirectoryReader.open(FSDirectory.open(Paths.get(indexProp)));
+        ParallelCompositeReader parallelReader = new ParallelCompositeReader(readerH, readerP);
+        IndexSearcher searcher = new IndexSearcher(parallelReader);
 
         BufferedReader in = null;
         in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         List<QueryParser> parsers = new ArrayList<>();
         List<String> columns = new ArrayList<>();
-        int volume = 1;
 
-        // El campo cuerpo sera analizado utilizando el analyzer
-        if (cat.equals("host")) {
-            volume = 5;
-            columns.add("host_about");
-            columns.add("host_location");
-            columns.add("host_name");
-            columns.add("host_neighbourhood");
-            columns.add("information");
-            for (String s: columns) {
-                parsers.add(new QueryParser(s, analyzer));
-            }
-        } else if (cat.equals("prop")) {
-            volume = 7;
-//            parsers = new QueryParser[volume];
-//            parsers[0] = new QueryParser("description", analyzer);
-//            parsers[1] = new QueryParser("neighborhood_overview", analyzer);
-//            parsers[2] = new QueryParser("neighbourhood_cleansed", analyzer);
-//            parsers[3] = new QueryParser("property_type", analyzer);
-//            parsers[4] = new QueryParser("bathrooms_text", analyzer);
-//            parsers[5] = new QueryParser("amenities", analyzer);
-//            parsers[6] = new QueryParser("information", analyzer);
+        columns.add("host_about");
+        columns.add("host_location");
+        columns.add("host_name");
+        columns.add("host_neighbourhood");
+        columns.add("information");
+        columns.add("property_type");
+        columns.add("bathrooms_text");
+        columns.add("description");
+        columns.add("neighbourhood_overview");
+        columns.add("neighbourhood_cleansed");
+        columns.add("amenities");
+        for (String s: columns) {
+            parsers.add(new QueryParser(s, analyzer));
         }
-        while (true) {
+
+//        while (true) {
+        String line = null;
+        do {
             System.out.println("Consulta?: ");
 
-            String line = in.readLine();
+            line = in.readLine();
             if (line == null || line.length() == -1) {
                 break;
             }
@@ -430,15 +420,14 @@ public class Facetas {
             }
 
             Query query;
-            TopDocs[] hits = new TopDocs[volume];
+            TopDocs[] hits = new TopDocs[columns.size()];
             // Determine how many top hits do we want
-            int top = 5;
             try {
                 for (QueryParser p: parsers) {
                     int idx = parsers.indexOf(p);
                     query = p.parse(line);
                     hits[idx] = searcher.search(query, top);
-                    System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
+//                    System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
                 }
             } catch (ParseException e) {
                 System.out.println("Error en cadena consulta.");
@@ -446,35 +435,57 @@ public class Facetas {
             }
 
             StoredFields storedFields = searcher.storedFields();
-            ScoreDoc[] topScores;
-            topScores = new ScoreDoc[hits.length * top];
-            double min = 0.0;
-            double max = 0.0;
+            HashMap<ScoreDoc, Float> topScores;
+            topScores = new HashMap<>();
 
-            for (TopDocs hit: hits) {
-                for (ScoreDoc sd: hit.scoreDocs) {
+            for (int i = top-1; i >= 0; i--) {
+                for (int j = 0; j < hits.length; j++) {
+                    if (hits[j].scoreDocs.length == 0) {
+                        ;
+                    } else {
+                        if (hits[j].scoreDocs.length > i) {
+                            ScoreDoc sd = hits[j].scoreDocs[i];
+                            if (topScores.size() < top) {
+                             topScores.put(sd, sd.score);
+//                            System.out.println("Add documnet: " + sd.doc + ", Score: " + sd.score);
+                            } else {
+                                ScoreDoc min = null;
+                                for (ScoreDoc ksd : topScores.keySet()) {
+                                    if (ksd.score < sd.score) {
+                                        if (min == null || ksd.score < min.score) {
+                                            min = ksd;
+                                        }
+                                    }
+                                }
+                                if (min != null) {
+                                    topScores.remove(min);
+//                                System.out.println("Remove document: " + min.doc + ", Score: " + min.score);
+                                    topScores.put(sd, sd.score);
+//                                System.out.println("Add documnet: " + sd.doc + ", Score: " + sd.score);
+                                }
+                            }
+                        }
+                    }
                 }
             }
-//            Arrays.sort(topScores);
+//            System.out.println("Top " + topScores.size() + " documentos encontrados: ");
+
 //
-//            reverse(topScores);
-//            for (float score: topScores) {
-//                System.out.println(String.format("%.2f", score));
-//            }
-//            for (ScoreDoc hit: hits[4].scoreDocs) {
-//                Document doc = storedFields.document(hit.doc);
-//                System.out.println(hit.score);
-//                String cuerpo = doc.get("host_about");
-////                    Integer id = doc.getField("ID").numericValue().intValue();
-//                System.out.println("--------------------------------------------------");
-////                    System.out.println("ID: " + id);
-//                System.out.println("host_about " + doc.get("host_about"));
-//                System.out.println("host_location " + doc.get("host_location"));
-//                System.out.println("host_neighbourhood " + doc.get("host_neighbourhood"));
-//                System.out.println("host_name " + doc.get("host_name"));
+            for (ScoreDoc hit: topScores.keySet()) {
+                System.out.println(hit.doc + ", Score: " + hit.score);
+                Document doc = storedFields.document(hit.doc);
+                System.out.println("--------------------------------------------------");
+//                    System.out.println("ID: " + id);
+                System.out.println("property_type: " + doc.get("property_type"));
+//                System.out.println("description: " + doc.get("description"));
+                System.out.println("amenities: " + doc.get("amenities"));
+                System.out.println("host_about " + doc.get("host_about"));
+                System.out.println("host_location " + doc.get("host_location"));
+                System.out.println("host_neighbourhood " + doc.get("host_neighbourhood"));
+                System.out.println("host_name " + doc.get("host_name"));
 //                System.out.println("information " + doc.get("information"));
-//                System.out.println();
-//            }
+                System.out.println();
+            }
 
 //                ScoreDoc[] hits = results.scoreDocs;
 
@@ -484,35 +495,19 @@ public class Facetas {
             if (line.equals("")) {
                 break;
             }
-        }
+            System.out.println("Si quiere poner algunas facetas, entrar 'Facetas' para cambiar el modo");
+            line = in.readLine();
+        } while (!line.equals("Facetas"));
         try {
-            reader.close();
+            readerP.close();
+            readerH.close();
+            parallelReader.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
 
         }
     }
-    // method to reverse the array elements
-    private static void reverse(float[] a)
-    {
-        // length of an array
-        int n = a.length;
 
-        // swap the first half with the second half
-        for (int i = 0; i < n / 2; i++) {
-
-            // Store the first half elements temporarily
-            float t = a[i];
-
-            // Assign the first half
-            // to the last half
-            a[i] = a[n - i - 1];
-
-            // Assign the last half
-            // to the first half
-            a[n - i - 1] = t;
-        }
-    }
     private List<FacetResult> searchHost() throws IOException {
         DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
         IndexSearcher searcher = new IndexSearcher(indexReader);
@@ -558,7 +553,7 @@ public class Facetas {
         String propIndexPath = "./propFacet";
         String hostIndexPath = "./hostFacet";
         int limit = 1000;
-        indexSearch(hostIndexPath, "host", new StandardAnalyzer());
+        indexSearch(hostIndexPath, propIndexPath, new StandardAnalyzer(), 5);
 
         if(modo.equals("indexar")){
 
