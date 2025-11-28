@@ -26,6 +26,11 @@ import java.util.*;
 
 import com.opencsv.*;
 
+import org.apache.lucene.facet.range.DoubleRangeFacetCounts;
+//import org.apache.lucene.facet.range.LongRangeFacetCounts;
+import org.apache.lucene.facet.range.DoubleRange;
+//import org.apache.lucene.facet.range.LongRange;
+
 // practica 5
 import org.apache.lucene.facet.FacetsConfig;
 import org.apache.lucene.facet.range.LongRangeFacetCounts;
@@ -535,6 +540,57 @@ public class Facetas {
         return results;
     }
 
+        private List<FacetResult> searchProp() throws IOException {
+            DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+            IndexSearcher searcher = new IndexSearcher(indexReader);
+            String taxoDir = indexPath + "_taxo";
+            TaxonomyReader taxoReader = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(taxoDir)));
+            FacetsCollectorManager fcm = new FacetsCollectorManager();
+            // MatchAllDocsQuery is for "browsing" (counts facets
+            // for all non-deleted docs in the index); normally
+            // you'd use a "normal" query:
+            FacetsCollector fc =
+                FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
+    
+            // Retrieve results
+            List<FacetResult> results = new ArrayList<>();
+            // Count both "Publish Date" and "Author" dimensions
+            Facets counts = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
+            results.add(counts.getTopChildren(10, "neighbourhood_cleansed"));
+            results.add(counts.getTopChildren(10, "amenities"));
+            results.add(counts.getTopChildren(10, "property_type"));
+    
+            
+            // FACETAS NUMÉRICAS POR RANGO
+            DoubleRange[] priceRanges = new DoubleRange[] {
+                new DoubleRange("0-100", 0, true, 100, true),
+                new DoubleRange("101-200", 101, true, 200, true),
+                new DoubleRange("201-500", 201, true, 500, true),
+                new DoubleRange("500+", 500, false, Double.MAX_VALUE, true)
+            };
+    
+    
+            Facets facets = new DoubleRangeFacetCounts("price", fc, priceRanges);
+            //Facets facets = new LongValueFacetCounts("price", fc);
+            FacetResult resultado = facets.getAllChildren("price");
+            results.add(resultado);
+    
+            DoubleRange[] reviewRanges = new DoubleRange[] {
+                new DoubleRange("0-1", 0, true, 1, true),
+                new DoubleRange("2-3", 2, true, 3, true),
+                new DoubleRange("3-4", 3, true, 4, true),
+                new DoubleRange("5", 5, true, Double.MAX_VALUE, true)
+            };
+    
+            Facets facets2 = new DoubleRangeFacetCounts("review_scores_rating", fc, reviewRanges);
+            FacetResult resultado2 = facets2.getAllChildren("review_scores_rating");
+            results.add(resultado2);
+    
+            IOUtils.close(indexReader, taxoReader);
+    
+            return results;
+        }
+
     public static void main(String[] args) throws Exception {
         //"Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
 //        if (args.length < 5) {
@@ -576,74 +632,19 @@ public class Facetas {
             propFacetas.close();
             hostFacets.close();
         }
-//        else if(modo.equals("facetas_p")){
-//            String indexP = args[1];
-//
-//            FSDirectory dir = FSDirectory.open(Paths.get(indexP));
-//            IndexReader reader = DirectoryReader.open(dir);
-//            IndexSearcher searcher = new IndexSearcher(reader);
-//
-//            // Abrir taxonomía
-//            FSDirectory taxoDir = FSDirectory.open(Paths.get(indexP + "_taxo"));
-//            DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoDir);
-//
-//            FacetsConfig config = new FacetsConfig();
-//
-//            Query query = new MatchAllDocsQuery();
-//
-//            // Recolectar facetas
-//            FacetsCollector fc = new FacetsCollector();
-//            TopDocs hits = FacetsCollector.search(searcher, query, 10, fc);
-//
-//            // FACETAS CATEGÓRICAS
-//            Facets facets = new FastTaxonomyFacetCounts(taxoReader, config, fc);
-//
-//            System.out.println("\n===== FACETAS CATEGÓRICAS =====");
-//            FacetResult fr1 = facets.getTopChildren(10, "property_type");
-//            System.out.println(fr1);
-//            FacetResult fr2 = facets.getTopChildren(10, "neighbourhood_cleansed");
-//            System.out.println(fr2);
-//
-//            // FACETAS NUMÉRICAS POR RANGO
-//            LongRange[] priceRanges = new LongRange[] {
-//                new LongRange("0-100", 0L, true, 100L, true),
-//                new LongRange("101-200", 101L, true, 200L, true),
-//                new LongRange("201-500", 201L, true, 500L, true),
-//                new LongRange("500+", 501L, true, Long.MAX_VALUE, true)
-//            };
-//            LongRangeFacetCounts priceFacets = new LongRangeFacetCounts("price", fc, priceRanges);
-//            FacetResult priceResult = priceFacets.getAllChildren("price");
-//            System.out.println("\n===== FACETAS NUMÉRICAS: price =====");
-//            System.out.println(priceResult);
-//
-//            LongRange[] reviewsRanges = new LongRange[] {
-//                new LongRange("0-10", 0L, true, 10L, true),
-//                new LongRange("11-50", 11L, true, 50L, true),
-//                new LongRange("51-200", 51L, true, 200L, true),
-//                new LongRange("200+", 201L, true, Long.MAX_VALUE, true)
-//            };
-//            LongRangeFacetCounts reviewsFacets = new LongRangeFacetCounts("number_of_reviews", fc, reviewsRanges);
-//            FacetResult reviewsResult = reviewsFacets.getAllChildren("number_of_reviews");
-//            System.out.println("\n===== FACETAS NUMÉRICAS: number_of_reviews =====");
-//            System.out.println(reviewsResult);
-//
-//            // Mostrar primeros resultados
-//            hits = searcher.search(query, 5);
-//            System.out.println("\nPrimeros resultados:");
-//            StoredFields storedFields = searcher.storedFields();
-//            for (ScoreDoc sd : hits.scoreDocs) {
-//                Document d = storedFields.document(sd.doc);
-//                System.out.println("- " + d.get("name") +
-//                        " | tipo: " + d.get("property_type") +
-//                        " | barrio: " + d.get("neighbourhood_cleansed") +
-//                        " | price: " + d.get("price") +
-//                        " | reviews: " + d.get("number_of_reviews"));
-//            }
-//
-//            reader.close();
-//            taxoReader.close();
-//            return;
-//        }
+        else if(modo.equals("facetas_p")){
+            String indexP = args[1];
+            String indexPath = args[2];
+            String taxoPath = indexP + "_taxo";
+
+            List<FacetResult> results = new Facetas(indexP).searchProp();
+            System.out.println("Neighbourhood: " + results.get(0));
+            System.out.println("Amenities: " + results.get(1));
+            System.out.println("PropertyType: " + results.get(2));
+            System.out.println("Price ranges: " + results.get(3));
+            System.out.println("Review scores: " + results.get(4));
+
+        }
         else if (modo.equals("facetas_h")) {
 //            String indexPath = args[2];
 //            String taxoPath = indexPath + "_taxo";
