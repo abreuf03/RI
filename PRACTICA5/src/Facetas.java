@@ -85,6 +85,29 @@ public class Facetas {
 
     }
 
+        //solo lecturas -> intento de solucionar problema de bathrooms y bedrooms
+    public Facetas(String indexPath, boolean forSearchOnly) throws IOException {
+        this.indexPath = indexPath;
+        facetsConfig = new FacetsConfig();
+        facetsConfig.setMultiValued("neighbourhood_cleansed", false);
+        facetsConfig.setHierarchical("neighbourhood_cleansed", false);
+
+        facetsConfig.setMultiValued("property_type", false);
+        facetsConfig.setMultiValued("amenities", true);
+        facetsConfig.setMultiValued("host_name", false);
+        facetsConfig.setMultiValued("host_location", false);
+        facetsConfig.setMultiValued("host_neighbourhood", false);
+        facetsConfig.setMultiValued("host_is_superhost", false);
+        facetsConfig.setHierarchical("host_since", true);
+
+        facetsConfig.setHierarchical("bedrooms", true);
+        facetsConfig.setMultiValued("bedrooms", false);
+
+        facetsConfig.setHierarchical("bathrooms", true);
+        facetsConfig.setMultiValued("bathrooms", false);
+    }
+
+
     private Document getDocument(Map<String, Integer> map, List<String> values) {
         Document doc = new Document();
         doc.add(new TextField("information", values.toString(), Field.Store.YES));
@@ -173,21 +196,26 @@ public class Facetas {
                     case "number_of_reviews":
                     case "bedrooms":
                     case "bathrooms":
+                    
                         try {
-                            int num = Integer.parseInt(val.replaceAll("[^0-9]", ""));
-                            if (val.isEmpty()) {
-                               num = 0;
-                            } else {
-                                double parsed = Double.parseDouble(val);
-                                num = (int) parsed;
+                             String cleaned = val.replaceAll("[^0-9.]", "").trim();
+                            // Ignorar si el valor está vacío
+                            if (val != null && !val.trim().isEmpty()) {
+                                int num = (int) Double.parseDouble(cleaned);
+                                System.out.println("DEBUG " + attr + " cleaned = " + num);
+
+                                // Campos para búsquedas y recuperación
+                                doc.add(new IntPoint(attr, num));
+                                doc.add(new StoredField(attr, num));
+
+                                // Para ordenar y doc values — usar un nombre distinto para evitar conflictos
+                                doc.add(new NumericDocValuesField(attr + "_dv", num));
+
+                                // Faceta (usar la dimensión tal cual con el valor string)
+                                doc.add(new FacetField(attr, Integer.toString(num)));
                             }
-                            doc.add(new IntPoint(attr, num));
-                            doc.add(new StoredField(attr, num));
-
-                            //practica 5
-                            doc.add(new NumericDocValuesField(attr, num));
-
                         } catch (Exception e) {
+                            System.out.println("DEBUG bathrooms EMPTY: " + val);
                             System.err.println("Error parsing int field " + attr + ": " + e.getMessage());
                         }
                         break;
@@ -585,6 +613,10 @@ public class Facetas {
             Facets facets2 = new DoubleRangeFacetCounts("review_scores_rating", fc, reviewRanges);
             FacetResult resultado2 = facets2.getAllChildren("review_scores_rating");
             results.add(resultado2);
+
+            results.add(counts.getTopChildren(10, "bathrooms"));
+            results.add(counts.getTopChildren(10, "bedrooms"));
+        
     
             IOUtils.close(indexReader, taxoReader);
     
@@ -637,7 +669,8 @@ public class Facetas {
             String indexPath = args[2];
             String taxoPath = indexP + "_taxo";
 
-            List<FacetResult> results = new Facetas(indexP).searchProp();
+            Facetas f = new Facetas(indexP, true);
+            List<FacetResult> results = f.searchProp();
             System.out.println("Neighbourhood: " + results.get(0));
             System.out.println("Amenities: " + results.get(1));
             System.out.println("PropertyType: " + results.get(2));
@@ -664,7 +697,8 @@ public class Facetas {
 //
 //           List<FacetResult> results = new ArrayList<>();
 
-            List<FacetResult> results = new Facetas(indexPath).searchHost();
+            Facetas f = new Facetas(hostIndexPath, true);
+            List<FacetResult> results = f.searchHost();
             System.out.println("Host neighbourhood: " + results.get(0));
             System.out.println("Host since: " + results.get(1));
             System.out.println("Host name: " + results.get(2));
