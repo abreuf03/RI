@@ -341,7 +341,7 @@ public class Facetas {
         }
     }
 
-    public int createBothIndices(String docPath, int limit, String cat) throws Exception {
+    ppublic int createBothIndices(String docPath, int limit, String cat) throws Exception { //voy a volver a ponerlo para usar 1 índice
         File file = new File(docPath);
         List<List<String>> lines = new ArrayList<>();
 
@@ -371,7 +371,7 @@ public class Facetas {
 
         // Mapas para host y propiedad
         Map<String, Integer> map = new HashMap<>();
-        if (cat.equals("host")) {
+        //if (cat.equals("host")) {
             map.put("host_url", header.indexOf("host_url"));
             map.put("host_name", header.indexOf("host_name"));
             map.put("host_since", header.indexOf("host_since"));
@@ -381,7 +381,7 @@ public class Facetas {
             map.put("host_is_superhost", header.indexOf("host_is_superhost"));
             map.put("host_neighbourhood", header.indexOf("host_neighbourhood"));
 
-        } else if (cat.equals("prop")) {
+        //} else if (cat.equals("prop")) {
             map.put("id", header.indexOf("id"));
             map.put("listing_url", header.indexOf("listing_url"));
             map.put("name", header.indexOf("name"));
@@ -399,7 +399,7 @@ public class Facetas {
             map.put("number_of_reviews", header.indexOf("number_of_reviews"));
             map.put("review_scores_rating", header.indexOf("review_scores_rating"));
 
-        }
+        //}
 
 
         // Iterar filas y crear ambos documentos
@@ -411,11 +411,75 @@ public class Facetas {
         return writer.getDocStats().numDocs;
     }
 
-    public static void indexSearch(String indexHost, String indexProp, Analyzer analyzer, Integer top) throws IOException {
-        DirectoryReader readerH = DirectoryReader.open(FSDirectory.open(Paths.get(indexHost)));
-        DirectoryReader readerP = DirectoryReader.open(FSDirectory.open(Paths.get(indexProp)));
-        ParallelCompositeReader parallelReader = new ParallelCompositeReader(readerH, readerP);
-        IndexSearcher searcher = new IndexSearcher(parallelReader);
+    public Map<Integer, String> mostrarFacetas(IndexSearcher searcher, Query query) throws IOException {
+
+        DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+        TaxonomyReader taxoReader = new DirectoryTaxonomyReader(
+                FSDirectory.open(Paths.get(indexPath + "_taxo"))
+        );
+
+        FacetsCollectorManager fcm = new FacetsCollectorManager();
+        FacetsCollector fc = FacetsCollectorManager.search(searcher, query, 100, fcm).facetsCollector();
+
+        Facets facets = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
+
+        List<FacetResult> all = facets.getAllDims(50);
+
+        System.out.println("\n--- FACETAS DISPONIBLES ---");
+        Map<Integer, String> opciones = new HashMap<>();
+
+        int id = 1;
+        for (FacetResult fr : all) {
+            System.out.println(id + ") " + fr.dim);
+            opciones.put(id, fr.dim);
+            id++;
+        }
+
+        IOUtils.close(indexReader, taxoReader);
+        return opciones;
+    }
+
+    public Map<Integer, String> mostrarValoresFaceta(String faceta, IndexSearcher searcher, Query query) throws IOException {
+
+        DirectoryReader ir = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+        TaxonomyReader tr = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(indexPath + "_taxo")));
+
+        FacetsCollectorManager fcm = new FacetsCollectorManager();
+        FacetsCollector fc = FacetsCollectorManager.search(searcher, query, 100, fcm).facetsCollector();
+
+        Facets facets = new FastTaxonomyFacetCounts(tr, facetsConfig, fc);
+
+        FacetResult fr = facets.getTopChildren(20, faceta);
+
+        Map<Integer, String> result = new HashMap<>();
+
+        System.out.println("\nValores para la faceta: " + faceta);
+        int id = 1;
+        for (LabelAndValue lv : fr.labelValues) {
+            System.out.println(id + ") " + lv.label + " (" + lv.value + ")");
+            result.put(id, lv.label);
+            id++;
+        }
+
+        IOUtils.close(ir, tr);
+        return result;
+    }
+
+    public TopDocs aplicarFaceta(IndexSearcher searcher, Query baseQuery, String faceta, String valor) throws IOException {
+        DrillDownQuery ddq = new DrillDownQuery(facetsConfig, baseQuery);
+        ddq.add(faceta, valor);
+        return searcher.search(ddq, 10);
+    }
+
+
+   public static void indexSearch(String indexHost, String indexProp, Analyzer analyzer, Integer top) throws IOException, org.apache.lucene.queryparser.classic.ParseException {
+        //DirectoryReader readerH = DirectoryReader.open(FSDirectory.open(Paths.get(indexHost)));
+        //DirectoryReader readerP = DirectoryReader.open(FSDirectory.open(Paths.get(indexProp)));
+        DirectoryReader reader = DirectoryReader.open(FSDirectory.open(Paths.get(indexProp)));
+        IndexSearcher searcher = new IndexSearcher(reader);
+        //ParallelCompositeReader parallelReader = new ParallelCompositeReader(readerH, readerP);
+        //IndexSearcher searcher = new IndexSearcher(parallelReader);
+        //IndexSearcher searcher = new IndexSearcher(readerP);
 
         BufferedReader in = null;
         in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
@@ -453,19 +517,22 @@ public class Facetas {
             }
 
             Query query;
+            Query originalquery =  new MultiFieldQueryParser(columns.toArray(new String[0]), analyzer).parse(line);
             TopDocs[] hits = new TopDocs[columns.size()];
+            
             // Determine how many top hits do we want
-            try {
+           // try {
                 for (QueryParser p: parsers) {
                     int idx = parsers.indexOf(p);
                     query = p.parse(line);
+                    originalquery = parsers.get(0).parse(line);
                     hits[idx] = searcher.search(query, top);
 //                    System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
                 }
-            } catch (ParseException e) {
-                System.out.println("Error en cadena consulta.");
-                continue;
-            }
+            //} catch (ParseException e) {
+            //    System.out.println("Error en cadena consulta.");
+            //    continue;
+            //}
 
             StoredFields storedFields = searcher.storedFields();
             HashMap<ScoreDoc, Float> topScores;
@@ -528,13 +595,50 @@ public class Facetas {
             if (line.equals("")) {
                 break;
             }
-            System.out.println("Si quiere poner algunas facetas, entrar 'Facetas' para cambiar el modo");
-            line = in.readLine();
+            
+            System.out.println("¿Aplicar facetas? (si/no)");
+            String opcion = in.readLine();
+
+            if (opcion.equalsIgnoreCase("si")) {
+
+                Facetas fac = new Facetas(indexProp, true);
+
+                // 1. Mostrar facetas
+                Map<Integer, String> facetas = fac.mostrarFacetas(searcher, originalquery);
+
+                System.out.println("Seleccione nº de faceta:");
+                int fsel = Integer.parseInt(in.readLine());
+                String facetaElegida = facetas.get(fsel);
+
+                // 2. Mostrar valores de esa faceta
+                Map<Integer, String> valores = fac.mostrarValoresFaceta(facetaElegida, searcher, originalquery);
+
+                System.out.println("Seleccione un valor:");
+                int vsel = Integer.parseInt(in.readLine());
+                String valorElegido = valores.get(vsel);
+
+                // 3. Aplicar DrillDown
+                TopDocs filtrados = fac.aplicarFaceta(searcher, originalquery, facetaElegida, valorElegido);
+
+                System.out.println("\n--- RESULTADOS FILTRADOS ---");
+
+                for (ScoreDoc sd : filtrados.scoreDocs) {
+                    StoredFields sf = searcher.storedFields();
+                    Document d = sf.document(sd.doc);   
+
+                    System.out.println("Doc " + sd.doc + " score=" + sd.score);
+                    System.out.println("property_type: " + d.get("property_type"));
+                    System.out.println("amenities: " + d.get("amenities"));
+                    System.out.println("----------------------------------");
+                }
+            }
+
         } while (!line.equals("Facetas"));
         try {
-            readerP.close();
-            readerH.close();
-            parallelReader.close();
+            //readerP.close();
+            //readerH.close();
+            //parallelReader.close();
+            reader.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
 
@@ -623,25 +727,26 @@ public class Facetas {
             return results;
         }
 
-    public static void main(String[] args) throws Exception {
+   public static void main(String[] args) throws Exception {
         //"Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
-//        if (args.length < 5) {
-//            System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
-//            return;
-//        }
-//
-//        String csvPath = args[1];         // Ruta al CSV
-//        String propIndexPath = args[2];    // Ruta donde se creará el índice de propiedad
-//        String hostIndexPath = args[3];    // Ruta donde se creará el índice de anfitrión
-//        int limit = Integer.parseInt(args[4]); // Número máximo de filas a indexar (0 = todas)
-//        String modo = args[5];
+       // if (args.length < 5) {
+        //    System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
+        //    return;
+       // }
 
-        String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
-        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-        String propIndexPath = "./propFacet";
-        String hostIndexPath = "./hostFacet";
-        int limit = 1000;
-        indexSearch(hostIndexPath, propIndexPath, new StandardAnalyzer(), 5);
+        String csvPath = args[0];         // Ruta al CSV
+        String indexPath = args[1]; //ruta del ÚNICO índice
+        //String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
+       // String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
+        int limit = Integer.parseInt(args[2]); // Número máximo de filas a indexar (0 = todas)
+        String modo = args[3];
+
+//        String modo = "facetas_h"; // "indexar", "facetas_p", "facetas_h"
+//        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
+//        String propIndexPath = "./propFacet";
+//        String hostIndexPath = "./hostFacet";
+//        int limit = 1000;
+        //indexSearch(hostIndexPath, propIndexPath, new StandardAnalyzer(), 5);
 
         if(modo.equals("indexar")){
 
@@ -650,55 +755,53 @@ public class Facetas {
             Similarity similarity = new ClassicSimilarity();
 
             // Crear indexadores
-            Facetas propFacetas = new Facetas(propIndexPath);
-            Facetas hostFacets = new Facetas(hostIndexPath);
+            Facetas facetas = new Facetas(indexPath);
+            int numDocs = facetas.createBothIndices(csvPath, limit, "all");
+            System.out.println("Número de documentos indexados : " + numDocs);
+            facetas.close();
+            indexSearch(indexPath, indexPath, new StandardAnalyzer(), 5);
 
             // Indexar ambos índices simultáneamente
-            int numDocsProp = propFacetas.createBothIndices(csvPath, limit, "prop");
-            System.out.println("Número de documentos indexados de propiedad: " + numDocsProp);
+            //int numDocsProp = propFacetas.createBothIndices(csvPath, limit, "prop");
+            //System.out.println("Número de documentos indexados de propiedad: " + numDocsProp);
 
-            int numDocsHost = hostFacets.createBothIndices(csvPath, limit, "host");
-            System.out.println("Número de documentos indexados de anfitrión: " + numDocsHost);
+            //int numDocsHost = hostFacets.createBothIndices(csvPath, limit, "host");
+            //System.out.println("Número de documentos indexados de anfitrión: " + numDocsHost);
 
             // Cerrar indexadores
-            propFacetas.close();
-            hostFacets.close();
+            //propFacetas.close();
+            //hostFacets.close();
         }
         else if(modo.equals("facetas_p")){
+            
             String indexP = args[1];
-            String indexPath = args[2];
+            //String indexPath = args[2];
             String taxoPath = indexP + "_taxo";
 
             Facetas f = new Facetas(indexP, true);
             List<FacetResult> results = f.searchProp();
+
             System.out.println("Neighbourhood: " + results.get(0));
             System.out.println("Amenities: " + results.get(1));
             System.out.println("PropertyType: " + results.get(2));
             System.out.println("Price ranges: " + results.get(3));
             System.out.println("Review scores: " + results.get(4));
+            System.out.println("Bathrooms: " + results.get(5));
+            System.out.println("Bedrooms: " + results.get(6));
+
+            //indexSearch(hostIndexPath, propIndexPath, new StandardAnalyzer(), 5);
+
 
         }
         else if (modo.equals("facetas_h")) {
-//            String indexPath = args[2];
+            String indexP = args[2];
 //            String taxoPath = indexPath + "_taxo";
-            String indexPath = hostIndexPath;
-            String taxoPath = hostIndexPath + "_taxo";
-//            FSDirectory dir = FSDirectory.open(Paths.get(indexPath));
-//            IndexReader reader = DirectoryReader.open(dir);
-//            IndexSearcher searcher = new IndexSearcher(reader);
-//
-//            // Abrir taxonomía
-//            FSDirectory taxoDir = FSDirectory.open(Paths.get(taxoPath));
-//            TaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoDir);
-//
-//            FacetsCollectorManager fcm = new FacetsCollectorManager();
-//            FacetsCollector fc = FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
-//
-//
-//           List<FacetResult> results = new ArrayList<>();
+           // String indexPath = hostIndexPath;
+           // String taxoPath = hostIndexPath + "_taxo";
 
-            Facetas f = new Facetas(hostIndexPath, true);
+            Facetas f = new Facetas(indexP, true);
             List<FacetResult> results = f.searchHost();
+
             System.out.println("Host neighbourhood: " + results.get(0));
             System.out.println("Host since: " + results.get(1));
             System.out.println("Host name: " + results.get(2));
@@ -709,6 +812,7 @@ public class Facetas {
 
 
     }
+
 
 
 }
