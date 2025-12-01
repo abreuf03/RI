@@ -83,6 +83,12 @@ public class Facetas {
         facetsConfig.setMultiValued("host_is_superhost", true);
         facetsConfig.setHierarchical("host_since", true);
 
+        facetsConfig.setHierarchical("bedrooms", true);
+        facetsConfig.setMultiValued("bedrooms", false);
+
+        facetsConfig.setHierarchical("bathrooms", true);
+        facetsConfig.setMultiValued("bathrooms", false);
+
     }
 
         //solo lecturas -> intento de solucionar problema de bathrooms y bedrooms
@@ -672,60 +678,68 @@ public class Facetas {
         return results;
     }
 
-        private List<FacetResult> searchProp() throws IOException {
-            DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
-            IndexSearcher searcher = new IndexSearcher(indexReader);
-            String taxoDir = indexPath + "_taxo";
-            TaxonomyReader taxoReader = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(taxoDir)));
-            FacetsCollectorManager fcm = new FacetsCollectorManager();
-            // MatchAllDocsQuery is for "browsing" (counts facets
-            // for all non-deleted docs in the index); normally
-            // you'd use a "normal" query:
-            FacetsCollector fc =
-                FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
-    
-            // Retrieve results
-            List<FacetResult> results = new ArrayList<>();
-            // Count both "Publish Date" and "Author" dimensions
-            Facets counts = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
-            results.add(counts.getTopChildren(10, "neighbourhood_cleansed"));
-            results.add(counts.getTopChildren(10, "amenities"));
-            results.add(counts.getTopChildren(10, "property_type"));
-    
-            
-            // FACETAS NUMÉRICAS POR RANGO
-            DoubleRange[] priceRanges = new DoubleRange[] {
-                new DoubleRange("0-100", 0, true, 100, true),
-                new DoubleRange("101-200", 101, true, 200, true),
-                new DoubleRange("201-500", 201, true, 500, true),
-                new DoubleRange("500+", 500, false, Double.MAX_VALUE, true)
-            };
-    
-    
-            Facets facets = new DoubleRangeFacetCounts("price", fc, priceRanges);
-            //Facets facets = new LongValueFacetCounts("price", fc);
-            FacetResult resultado = facets.getAllChildren("price");
-            results.add(resultado);
-    
-            DoubleRange[] reviewRanges = new DoubleRange[] {
-                new DoubleRange("0-1", 0, true, 1, true),
-                new DoubleRange("2-3", 2, true, 3, true),
-                new DoubleRange("3-4", 3, true, 4, true),
-                new DoubleRange("5", 5, true, Double.MAX_VALUE, true)
-            };
-    
-            Facets facets2 = new DoubleRangeFacetCounts("review_scores_rating", fc, reviewRanges);
-            FacetResult resultado2 = facets2.getAllChildren("review_scores_rating");
-            results.add(resultado2);
+       private List<FacetResult> searchProp() throws IOException {
+        DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+        IndexSearcher searcher = new IndexSearcher(indexReader);
+        String taxoDir = indexPath + "_taxo";
+        TaxonomyReader taxoReader = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(taxoDir)));
 
-            results.add(counts.getTopChildren(10, "bathrooms"));
-            results.add(counts.getTopChildren(10, "bedrooms"));
+
+        FacetsCollectorManager fcm = new FacetsCollectorManager();
+        // MatchAllDocsQuery is for "browsing" (counts facets
+        // for all non-deleted docs in the index); normally
+        // you'd use a "normal" query:
+        FacetsCollector fc =
+            FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
+
+        // Retrieve results
+        List<FacetResult> results = new ArrayList<>();
+        // Count both "Publish Date" and "Author" dimensions
+        Facets counts = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
+
         
-    
-            IOUtils.close(indexReader, taxoReader);
-    
-            return results;
-        }
+
+        results.add(counts.getTopChildren(10, "neighbourhood_cleansed"));
+        results.add(counts.getTopChildren(10, "amenities"));
+        results.add(counts.getTopChildren(10, "property_type"));
+        
+
+        
+        // FACETAS NUMÉRICAS POR RANGO
+        DoubleRange[] priceRanges = new DoubleRange[] {
+            new DoubleRange("0-100", 0, true, 100, true),
+            new DoubleRange("101-200", 101, true, 200, true),
+            new DoubleRange("201-500", 201, true, 500, true),
+            new DoubleRange("500+", 500, false, Double.MAX_VALUE, true)
+        };
+
+
+        Facets facets = new DoubleRangeFacetCounts("price", fc, priceRanges);
+        //Facets facets = new LongValueFacetCounts("price", fc);
+        FacetResult resultado = facets.getAllChildren("price");
+        results.add(resultado);
+
+        DoubleRange[] reviewRanges = new DoubleRange[] {
+            new DoubleRange("0-1", 0, true, 1, false),
+            new DoubleRange("1-2", 1, true, 2, false),
+            new DoubleRange("2-3", 2, true, 3, false),
+            new DoubleRange("3-4", 3, true, 4, false),
+            new DoubleRange("4-5", 4, true, Double.MAX_VALUE, true)
+        };
+
+        Facets facets2 = new DoubleRangeFacetCounts("review_scores_rating", fc, reviewRanges);
+        FacetResult resultado2 = facets2.getAllChildren("review_scores_rating");
+        results.add(resultado2);
+
+        results.add(counts.getTopChildren(10, "bathrooms"));
+        results.add(counts.getTopChildren(10, "bedrooms"));
+        
+        
+
+        IOUtils.close(indexReader, taxoReader);
+
+        return results;
+    }
 
    public static void main(String[] args) throws Exception {
         //"Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
