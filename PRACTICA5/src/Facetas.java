@@ -84,6 +84,12 @@ public class Facetas {
         facetsConfig.setMultiValued("host_is_superhost", true);
         facetsConfig.setHierarchical("host_since", true);
 
+        facetsConfig.setHierarchical("bedrooms", true);
+        facetsConfig.setMultiValued("bedrooms", false);
+
+        facetsConfig.setHierarchical("bathrooms", true);
+        facetsConfig.setMultiValued("bathrooms", false);
+
     }
 
         //solo lecturas -> intento de solucionar problema de bathrooms y bedrooms
@@ -517,17 +523,16 @@ public class Facetas {
                 break;
             }
 
-            Query query;
-            Query originalquery =  new MultiFieldQueryParser(columns.toArray(new String[0]), analyzer).parse(line);
+            Query query = new MatchAllDocsQuery();
             TopDocs[] hits = new TopDocs[columns.size()];
             
             // Determine how many top hits do we want
            // try {
-            originalquery = parsers.get(0).parse(line);
-            for (QueryParser p: parsers) {
-                int idx = parsers.indexOf(p);
-                query = p.parse(line);
-                hits[idx] = searcher.search(query, top);
+                for (QueryParser p: parsers) {
+                    int idx = parsers.indexOf(p);
+                    query = p.parse(line);
+
+                    hits[idx] = searcher.search(query, top);
 //                    System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
             }
             //} catch (ParseException e) {
@@ -602,28 +607,28 @@ public class Facetas {
 
                     Facetas fac = new Facetas(indexProp, true);
 
-                    // 1. Mostrar facetas
-                    Map<Integer, String> facetas = fac.mostrarFacetas(searcher, originalquery);
+                // 1. Mostrar facetas
+                Map<Integer, String> facetas = fac.mostrarFacetas(searcher, query);
 
-                    System.out.println("Seleccione nº de faceta:");
-                    int fsel = Integer.parseInt(in.readLine());
-                    String facetaElegida = facetas.get(fsel);
+                System.out.println("Seleccione nº de faceta:");
+                int fsel = Integer.parseInt(in.readLine());
+                String facetaElegida = facetas.get(fsel);
 
-                    // 2. Mostrar valores de esa faceta
-                    Map<Integer, String> valores = fac.mostrarValoresFaceta(facetaElegida, searcher, originalquery);
+                // 2. Mostrar valores de esa faceta
+                Map<Integer, String> valores = fac.mostrarValoresFaceta(facetaElegida, searcher, query);
 
-                    System.out.println("Seleccione un valor:");
-                    int vsel = Integer.parseInt(in.readLine());
-                    String valorElegido = valores.get(vsel);
+                System.out.println("Seleccione un valor:");
+                int vsel = Integer.parseInt(in.readLine());
+                String valorElegido = valores.get(vsel);
 
-                    // 3. Aplicar DrillDown
-                    TopDocs filtrados = fac.aplicarFaceta(searcher, originalquery, facetaElegida, valorElegido);
+                // 3. Aplicar DrillDown
+                TopDocs filtrados = fac.aplicarFaceta(searcher, query, facetaElegida, valorElegido);
 
-                    System.out.println("\n--- RESULTADOS FILTRADOS ---");
+                System.out.println("\n--- RESULTADOS FILTRADOS ---");
 
-                    for (ScoreDoc sd : filtrados.scoreDocs) {
-                        StoredFields sf = searcher.storedFields();
-                        Document d = sf.document(sd.doc);
+                for (ScoreDoc sd : filtrados.scoreDocs) {
+                    StoredFields sf = searcher.storedFields();
+                    Document d = sf.document(sd.doc);   
 
                         System.out.println("Doc " + sd.doc + " score=" + sd.score);
                         System.out.println("property_type: " + d.get("property_type"));
@@ -675,11 +680,13 @@ public class Facetas {
         return results;
     }
 
-    private List<FacetResult> searchProp() throws IOException {
+       private List<FacetResult> searchProp() throws IOException {
         DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
         IndexSearcher searcher = new IndexSearcher(indexReader);
         String taxoDir = indexPath + "_taxo";
         TaxonomyReader taxoReader = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(taxoDir)));
+
+
         FacetsCollectorManager fcm = new FacetsCollectorManager();
         // MatchAllDocsQuery is for "browsing" (counts facets
         // for all non-deleted docs in the index); normally
@@ -691,9 +698,13 @@ public class Facetas {
         List<FacetResult> results = new ArrayList<>();
         // Count both "Publish Date" and "Author" dimensions
         Facets counts = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
+
+
+
         results.add(counts.getTopChildren(10, "neighbourhood_cleansed"));
         results.add(counts.getTopChildren(10, "amenities"));
         results.add(counts.getTopChildren(10, "property_type"));
+
 
 
         // FACETAS NUMÉRICAS POR RANGO
@@ -711,10 +722,11 @@ public class Facetas {
         results.add(resultado);
 
         DoubleRange[] reviewRanges = new DoubleRange[] {
-            new DoubleRange("0-1", 0, true, 1, true),
-            new DoubleRange("2-3", 2, true, 3, true),
-            new DoubleRange("3-4", 3, true, 4, true),
-            new DoubleRange("5", 5, true, Double.MAX_VALUE, true)
+            new DoubleRange("0-1", 0, true, 1, false),
+            new DoubleRange("1-2", 1, true, 2, false),
+            new DoubleRange("2-3", 2, true, 3, false),
+            new DoubleRange("3-4", 3, true, 4, false),
+            new DoubleRange("4-5", 4, true, Double.MAX_VALUE, true)
         };
 
         Facets facets2 = new DoubleRangeFacetCounts("review_scores_rating", fc, reviewRanges);
@@ -723,6 +735,7 @@ public class Facetas {
 
         results.add(counts.getTopChildren(10, "bathrooms"));
         results.add(counts.getTopChildren(10, "bedrooms"));
+
 
 
         IOUtils.close(indexReader, taxoReader);
@@ -744,12 +757,11 @@ public class Facetas {
         int limit = Integer.parseInt(args[2]); // Número máximo de filas a indexar (0 = todas)
         String modo = args[3];
 
-//        String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
+//        String modo = "facetas_h"; // "indexar", "facetas_p", "facetas_h"
 //        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-//        String indexPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica5/index";
 //        String propIndexPath = "./propFacet";
 //        String hostIndexPath = "./hostFacet";
-//        int limit = 10;
+//        int limit = 1000;
         //indexSearch(hostIndexPath, propIndexPath, new StandardAnalyzer(), 5);
 
        switch (modo) {
