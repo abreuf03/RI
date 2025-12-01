@@ -522,8 +522,7 @@ public class Facetas {
                 break;
             }
 
-            Query query;
-            Query originalquery =  new MultiFieldQueryParser(columns.toArray(new String[0]), analyzer).parse(line);
+            Query query = new MatchAllDocsQuery();
             TopDocs[] hits = new TopDocs[columns.size()];
             
             // Determine how many top hits do we want
@@ -531,7 +530,7 @@ public class Facetas {
                 for (QueryParser p: parsers) {
                     int idx = parsers.indexOf(p);
                     query = p.parse(line);
-                    originalquery = parsers.get(0).parse(line);
+                    
                     hits[idx] = searcher.search(query, top);
 //                    System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
                 }
@@ -610,21 +609,21 @@ public class Facetas {
                 Facetas fac = new Facetas(indexProp, true);
 
                 // 1. Mostrar facetas
-                Map<Integer, String> facetas = fac.mostrarFacetas(searcher, originalquery);
+                Map<Integer, String> facetas = fac.mostrarFacetas(searcher, query);
 
                 System.out.println("Seleccione nº de faceta:");
                 int fsel = Integer.parseInt(in.readLine());
                 String facetaElegida = facetas.get(fsel);
 
                 // 2. Mostrar valores de esa faceta
-                Map<Integer, String> valores = fac.mostrarValoresFaceta(facetaElegida, searcher, originalquery);
+                Map<Integer, String> valores = fac.mostrarValoresFaceta(facetaElegida, searcher, query);
 
                 System.out.println("Seleccione un valor:");
                 int vsel = Integer.parseInt(in.readLine());
                 String valorElegido = valores.get(vsel);
 
                 // 3. Aplicar DrillDown
-                TopDocs filtrados = fac.aplicarFaceta(searcher, originalquery, facetaElegida, valorElegido);
+                TopDocs filtrados = fac.aplicarFaceta(searcher, query, facetaElegida, valorElegido);
 
                 System.out.println("\n--- RESULTADOS FILTRADOS ---");
 
