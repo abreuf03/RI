@@ -103,7 +103,7 @@ public class Facetas {
         facetsConfig.setMultiValued("bathrooms", false);
 
 
-        System.out.println("FACET CONFIG: " + facetsConfig.getDimConfigs());
+//        System.out.println("FACET CONFIG: " + facetsConfig.getDimConfigs());
     }
 
     //solo lecturas -> intento de solucionar problema de bathrooms y bedrooms
@@ -137,7 +137,7 @@ public class Facetas {
              if (attr.equals(val)) { // No añadir los nombres de campos
                 ;
             } else {
-                System.out.println("Attribute: " + attr + ", Value: " + val);
+//                System.out.println("Attribute: " + attr + ", Value: " + val);
 
                 switch (attr) {
                     case "latitude":
@@ -159,12 +159,13 @@ public class Facetas {
                     
 
                     case "price":
+                        double value;
                         try {
-                            double value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-                            doc.add(new DoublePoint(attr, value));
                             if (val.isEmpty()) {
                                 value = 0.0;
                             } else {
+                                value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+                                doc.add(new DoublePoint(attr, value));
                                 // Limpiar comillas, signo $ y comas
                                 String cleanVal = val.replace("\"", "")
                                                     .replace("$", "")
@@ -190,12 +191,12 @@ public class Facetas {
 
                     case "review_scores_rating":
                         try {
-                            double value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-                            doc.add(new DoublePoint(attr, value));
                             if (val.isEmpty()) {
                                 value = 0.0;
                             } else {
-                              
+
+                                value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+                                doc.add(new DoublePoint(attr, value));
                                 String cleanVal = val.replace("\"", "").trim();
 
                                 value = Double.parseDouble(cleanVal);
@@ -223,7 +224,7 @@ public class Facetas {
                             // Ignorar si el valor está vacío
                             if (val != null && !val.trim().isEmpty()) {
                                 int num = (int) Double.parseDouble(cleaned);
-                                System.out.println("DEBUG " + attr + " cleaned = " + num);
+//                                System.out.println("DEBUG " + attr + " cleaned = " + num);
 
                                 // Campos para búsquedas y recuperación
                                 doc.add(new IntPoint(attr, num));
@@ -281,7 +282,6 @@ public class Facetas {
                         break;
 
 
-                    // TODO: add facets here
                     // practica5
                     case "host_location":
                     case "host_neighbourhood":
@@ -353,7 +353,6 @@ public class Facetas {
 
 
     private void indexEntry(Map<String, Integer> map, List<String> values) {
-        System.out.println("Indexing...");
         Document doc = getDocument(map, values);
         try {
             //writer.addDocument(doc);
@@ -746,8 +745,6 @@ public class Facetas {
                     if (hit.scoreDocs.length == 0) {
                         ;
                     } else {
-                        if (hits[j].scoreDocs.length > i) {
-                            ScoreDoc sd = hits[j].scoreDocs[i];
                         if (hit.scoreDocs.length > i) {
                             ScoreDoc sd = hit.scoreDocs[i];
                             if (topScores.size() < top) {
@@ -807,8 +804,6 @@ public class Facetas {
                     Facetas fac = new Facetas(indexProp, true);
 //                    Facetas fac = new Facetas(indexProp);
 
-                // 1. Mostrar facetas
-                Map<Integer, String> facetas = fac.mostrarFacetas(searcher, query);
                     // 1. Mostrar facetas
                     Map<Integer, String> facetas = fac.mostrarFacetas(searcher, query);
 
@@ -826,15 +821,10 @@ public class Facetas {
                     // 3. Aplicar faceta (normal o por rango)
                     TopDocs filtrados;
 
-                if (facetaElegida.equals("price")) {
-                    filtrados = fac.aplicarFacetaPrice(searcher, query, valorElegido);
-                } else {
-                    filtrados = fac.aplicarFaceta(searcher, query, facetaElegida, valorElegido);
-                }
                     if (facetaElegida.equals("price")) {
                         filtrados = fac.aplicarFacetaPrice(searcher, query, valorElegido);
                     } else {
-                        filtrados = fac.aplicarFaceta(searcher, query, facetaElegida, valorElegido);
+                       filtrados = fac.aplicarFaceta(searcher, query, facetaElegida, valorElegido);
                     }
 
                     System.out.println("\n--- RESULTADOS FILTRADOS ---");
@@ -845,7 +835,7 @@ public class Facetas {
 
                         System.out.println("Doc " + sd.doc + " score=" + sd.score);
                         System.out.println("property_type: " + d.get("property_type"));
-                        System.out.println("price " + d.get("price"));
+                        System.out.println("price: $" + d.get("price"));
                         System.out.println("description: " + d.get("description"));
                         System.out.println("host_location: " + d.get("host_location"));
                         //System.out.println("amenities: " + d.get("amenities"));
@@ -899,10 +889,11 @@ public class Facetas {
 
                 // Crear indexadores
                 Facetas facetas = new Facetas(indexPath);
+                System.out.println("Indexing...");
                 int numDocs = facetas.createBothIndices(csvPath, limit, "all");
                 System.out.println("Número de documentos indexados : " + numDocs);
                 facetas.close();
-                indexSearch(indexPath, indexPath, new StandardAnalyzer(), 5);
+                indexSearch(indexPath, indexPath, new StandardAnalyzer(), 10);
 
                 // Indexar ambos índices simultáneamente
                 //int numDocsProp = propFacetas.createBothIndices(csvPath, limit, "prop");
