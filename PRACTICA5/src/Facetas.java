@@ -192,6 +192,22 @@ public class Facetas {
                         }
                         break;
                     case "number_of_reviews":
+                        try {
+                             String cleaned = val.replaceAll("[^0-9.]", "").trim();
+                            // Ignorar si el valor está vacío
+                            if (val != null && !val.trim().isEmpty()) {
+                                int num = (int) Double.parseDouble(cleaned);
+//                                System.out.println("DEBUG " + attr + " cleaned = " + num);
+
+                                // Campos para búsquedas y recuperación
+                                doc.add(new IntPoint(attr, num));
+                                doc.add(new StoredField(attr, num));
+                            }
+                        } catch (Exception e) {
+                            System.out.println("DEBUG bathrooms EMPTY: " + val);
+                            System.err.println("Error parsing int field " + attr + ": " + e.getMessage());
+                        }
+                        break;
                     case "bedrooms":
                     case "bathrooms":
                     
@@ -605,6 +621,8 @@ public class Facetas {
         return searcher.search(ddq, 10);
     }
 
+
+
     // método para mostrar rangos de precio
     private DoubleRange parsePriceRange(String label) {
         switch (label) {
@@ -643,6 +661,27 @@ public class Facetas {
                 .build();
 
         return searcher.search(filtered, 10);
+    }
+
+    public Query aplicarFacetaPriceAdicional(Query baseQuery, String priceLabel) {
+        DoubleRange r = parsePriceRange(priceLabel);
+
+        Query priceQuery = DoublePoint.newRangeQuery(
+                "price",
+                r.min,
+                r.max
+        );
+
+        return new BooleanQuery.Builder()
+                .add(baseQuery, BooleanClause.Occur.MUST)   // consulta original
+                .add(priceQuery, BooleanClause.Occur.MUST)  // filtro de precio
+                .build();
+    }
+
+    public Query aplicarFacetaAdicional(Query baseQuery, String faceta, String valor) {
+        DrillDownQuery ddq = new DrillDownQuery(facetsConfig, baseQuery);
+        ddq.add(faceta, valor);
+        return ddq;
     }
 
 
@@ -775,46 +814,85 @@ public class Facetas {
 
                 if (opcion.equalsIgnoreCase("si")) {
 
+                    Query currentQuery = query;
+
                     Facetas fac = new Facetas(indexProp, true);
 //                    Facetas fac = new Facetas(indexProp);
+                    boolean masFacetas = true;
 
-                    // 1. Mostrar facetas
-                    Map<Integer, String> facetas = fac.mostrarFacetas(searcher, query);
+                    while(masFacetas){
+                        //Mostrar facetas
+                        Map<Integer, String> facetas = fac.mostrarFacetas(searcher, currentQuery);
 
-                    System.out.println("Seleccione nº de faceta:");
-                    int fsel = Integer.parseInt(in.readLine());
-                    String facetaElegida = facetas.get(fsel);
+                        if(facetas.isEmpty()){
+                            System.out.println("No hay facetas disponibles para esta búsqueda");
+                            break;
+                        }
 
-                    // 2. Mostrar valores de esa faceta
-                    Map<Integer, String> valores = fac.mostrarValoresFaceta(facetaElegida, searcher, query);
+                        System.out.println("Seleccione nº de faceta o 0 para salir:");
+                        int fsel = Integer.parseInt(in.readLine());
 
-                    System.out.println("Seleccione un valor:");
-                    int vsel = Integer.parseInt(in.readLine());
-                    String valorElegido = valores.get(vsel);
+                        if(fsel == 0 ){
+                            break;
+                        }
 
-                    // 3. Aplicar faceta (normal o por rango)
-                    TopDocs filtrados;
+                        String facetaElegida = facetas.get(fsel);
+                        if (facetaElegida == null) {
+                            System.out.println("Opción de faceta no válida.");
+                            continue;
+                        }
 
-                    if (facetaElegida.equals("price")) {
-                        filtrados = fac.aplicarFacetaPrice(searcher, query, valorElegido);
-                    } else {
-                       filtrados = fac.aplicarFaceta(searcher, query, facetaElegida, valorElegido);
+                        // Mostrar valores de esa faceta
+                        Map<Integer, String> valores = fac.mostrarValoresFaceta(facetaElegida, searcher, currentQuery);
+                        if (valores.isEmpty()) {
+                            System.out.println("No hay valores disponibles para la faceta seleccionada.");
+                            continue;
+                        }
+
+                        System.out.println("Seleccione un valor:");
+                        int vsel = Integer.parseInt(in.readLine());
+                        String valorElegido = valores.get(vsel);
+
+                        if (valorElegido == null) {
+                            System.out.println("Opción de valor no válida.");
+                            continue;
+                        }
+
+                        // Aplicar faceta (normal o por rango)
+                        //TopDocs filtrados;
+
+                        if (facetaElegida.equals("price")) {
+                            currentQuery = fac.aplicarFacetaPriceAdicional(currentQuery,valorElegido);
+                        } else {
+                         currentQuery = fac.aplicarFacetaAdicional(currentQuery, facetaElegida, valorElegido);
+                        }
+
+                        TopDocs filtrados = searcher.search(currentQuery, top);
+
+                        System.out.println("\n--- RESULTADOS FILTRADOS ---");
+
+                        for (ScoreDoc sd : filtrados.scoreDocs) {
+                            StoredFields sf = searcher.storedFields();
+                            Document d = sf.document(sd.doc);
+
+                            System.out.println("Doc " + sd.doc + " score=" + sd.score);
+                            System.out.println("property_type: " + d.get("property_type"));
+                            System.out.println("price: $" + d.get("price"));
+                            System.out.println("description: " + d.get("description"));
+                           // System.out.println("host_location: " + d.get("host_location"));
+                            System.out.println("neighbourhood: " + d.get("neighbourhood_cleansed"));
+                            //System.out.println("amenities: " + d.get("amenities"));
+                            System.out.println("----------------------------------");
+                        }
+
+                        // Preguntar si quiere añadir OTRA faceta encima de las ya aplicadas
+                        System.out.println("¿Quieres añadir otra faceta? (si/no)");
+                        String otra = in.readLine();
+                        if (!otra.equalsIgnoreCase("si")) {
+                            masFacetas = false;
+                        }
                     }
-
-                    System.out.println("\n--- RESULTADOS FILTRADOS ---");
-
-                    for (ScoreDoc sd : filtrados.scoreDocs) {
-                        StoredFields sf = searcher.storedFields();
-                        Document d = sf.document(sd.doc);
-
-                        System.out.println("Doc " + sd.doc + " score=" + sd.score);
-                        System.out.println("property_type: " + d.get("property_type"));
-                        System.out.println("price: $" + d.get("price"));
-                        System.out.println("description: " + d.get("description"));
-                        System.out.println("host_location: " + d.get("host_location"));
-                        //System.out.println("amenities: " + d.get("amenities"));
-                        System.out.println("----------------------------------");
-                    }
+                    
 
                 }
 
@@ -833,26 +911,29 @@ public class Facetas {
         }
     }
 
+
     public static void main(String[] args) throws Exception {
-        //"Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
-       // if (args.length < 5) {
-        //    System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
-        //    return;
-       // }
+        /*
+        PARA EJECUTAR:
+        java -jar buscador-facetas.jar
+        */
 
-//        String csvPath = args[0];         // Ruta al CSV
-//        String indexPath = args[1]; //ruta del ÚNICO índice
-//        //String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
-//       // String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
-//        int limit = Integer.parseInt(args[2]); // Número máximo de filas a indexar (0 = todas)
-//        String modo = args[3];
 
-        String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
-        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-        String indexPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica5/index";
-        String propIndexPath = "./propFacet";
-        String hostIndexPath = "./hostFacet";
-        int limit = 100;
+        String csvPath = "doc/listings.csv";        // Ruta al CSV
+        String indexPath = "index/IndexUnico"; //ruta del ÚNICO índice
+        //String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
+       // String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
+        int limit = 500; // Número máximo de filas a indexar (0 = todas)
+        String modo = "otro";
+
+        //String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
+        //String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
+        //String indexPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica5/index";
+        //String propIndexPath = "./propFacet";
+        //String hostIndexPath = "./hostFacet";
+        //int limit = 100;
+
+        indexSearch(indexPath, indexPath, new StandardAnalyzer(), 10);
 
         switch (modo) {
             case "indexar" -> {
@@ -867,7 +948,7 @@ public class Facetas {
                 int numDocs = facetas.createBothIndices(csvPath, limit, "all");
                 System.out.println("Número de documentos indexados : " + numDocs);
                 facetas.close();
-                indexSearch(indexPath, indexPath, new StandardAnalyzer(), 10);
+                //indexSearch(indexPath, indexPath, new StandardAnalyzer(), 10);
 
                 // Indexar ambos índices simultáneamente
                 //int numDocsProp = propFacetas.createBothIndices(csvPath, limit, "prop");
