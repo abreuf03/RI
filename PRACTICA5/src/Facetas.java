@@ -4,24 +4,40 @@ import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.shingle.ShingleAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.*;
+// practica 5
 import org.apache.lucene.facet.*;
+import org.apache.lucene.facet.FacetsCollectorManager.FacetsResult;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
-import org.apache.lucene.index.*;
-import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
-import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.ParallelCompositeReader;
+import org.apache.lucene.index.StoredFields;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
+import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.search.Query;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -31,17 +47,10 @@ import org.apache.lucene.facet.range.DoubleRangeFacetCounts;
 //import org.apache.lucene.facet.range.LongRangeFacetCounts;
 import org.apache.lucene.facet.range.DoubleRange;
 //import org.apache.lucene.facet.range.LongRange;
-
-// practica 5
-import org.apache.lucene.facet.FacetsConfig;
-import org.apache.lucene.facet.range.LongRangeFacetCounts;
+import org.apache.lucene.facet.taxonomy.FacetLabel;
 import org.apache.lucene.facet.taxonomy.FastTaxonomyFacetCounts;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyReader;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
-import org.apache.lucene.facet.FacetField;
-import org.apache.lucene.facet.FacetResult;
-import org.apache.lucene.facet.Facets;
-import org.apache.lucene.facet.FacetsCollector;
 import org.apache.lucene.util.IOUtils;
 
 
@@ -54,7 +63,7 @@ public class Facetas {
     private Similarity similarity;
 
     // practica 5
-    private FacetsConfig facetsConfig;
+    private static FacetsConfig facetsConfig;
     private DirectoryTaxonomyWriter taxoWriter;
 
 
@@ -76,12 +85,15 @@ public class Facetas {
         facetsConfig = new FacetsConfig();
 
         // Configurar facetas normales
-        facetsConfig.setMultiValued("neighbourhood", false);
+        facetsConfig.setMultiValued("neighbourhood_cleansed", false);
+        facetsConfig.setHierarchical("neighbourhood_cleansed", false);
+        
         facetsConfig.setMultiValued("property_type", false);
-        facetsConfig.setMultiValued("host_name", true);
-        facetsConfig.setMultiValued("host_location", true);
-        facetsConfig.setMultiValued("host_neighbourhood", true);
-        facetsConfig.setMultiValued("host_is_superhost", true);
+        facetsConfig.setMultiValued("amenities", true);
+        facetsConfig.setMultiValued("host_name", false);
+        facetsConfig.setMultiValued("host_location", false);
+        facetsConfig.setMultiValued("host_neighbourhood", false);
+        facetsConfig.setMultiValued("host_is_superhost", false);
         facetsConfig.setHierarchical("host_since", true);
 
         facetsConfig.setHierarchical("bedrooms", true);
@@ -90,9 +102,11 @@ public class Facetas {
         facetsConfig.setHierarchical("bathrooms", true);
         facetsConfig.setMultiValued("bathrooms", false);
 
+
+        System.out.println("FACET CONFIG: " + facetsConfig.getDimConfigs());
     }
 
-        //solo lecturas -> intento de solucionar problema de bathrooms y bedrooms
+    //solo lecturas -> intento de solucionar problema de bathrooms y bedrooms
     public Facetas(String indexPath, boolean forSearchOnly) throws IOException {
         this.indexPath = indexPath;
         facetsConfig = new FacetsConfig();
@@ -117,7 +131,7 @@ public class Facetas {
 
     private Document getDocument(Map<String, Integer> map, List<String> values) {
         Document doc = new Document();
-        doc.add(new TextField("information", values.toString(), Field.Store.YES));
+
         for (String attr : map.keySet()) {
             String val = values.get(map.get(attr));
              if (attr.equals(val)) { // No añadir los nombres de campos
@@ -162,11 +176,12 @@ public class Facetas {
                                 // Indexar correctamente
                                 doc.add(new DoublePoint("price", value));                             // para búsquedas
                                 doc.add(new StoredField("price", value));                             // para recuperar con document.getField()
-                                doc.add(new DoubleDocValuesField("price", Double.doubleToRawLongBits(value)));  // para ordenar
+                                doc.add(new DoubleDocValuesField("price", value));  // para ordenar
                                 //debugging : System.out.println("Indexando price: '" + val + "' → " + value);
                                 
                                 // practica5
-                               // doc.add(new NumericDocValuesField("price", Double.doubleToRawLongBits(value)));
+                                
+                                //doc.add(new NumericDocValuesField("price", value));
 
                         } catch (NumberFormatException e) {
                             System.err.println("Error parsing price: '" + val + "'");
@@ -188,7 +203,7 @@ public class Facetas {
                                 // Indexar correctamente
                                 doc.add(new DoublePoint("review_scores_rating", value));
                                 doc.add(new StoredField("review_scores_rating", value));
-                                doc.add(new DoubleDocValuesField("review_scores_rating", Double.doubleToRawLongBits(value)));
+                                doc.add(new DoubleDocValuesField("review_scores_rating", value));
                                 //debugging : System.out.println("Indexando review_scores_rating: '" + val + "' → " + value);
 
                                 //practica 5
@@ -199,7 +214,6 @@ public class Facetas {
                             System.err.println("Error parsing review_scores_rating: '" + val + "'");
                         }
                         break;
-
                     case "number_of_reviews":
                     case "bedrooms":
                     case "bathrooms":
@@ -227,6 +241,7 @@ public class Facetas {
                         }
                         break;
 
+                    
                     case "description":
                     case "name":
                     case "neighborhood_overview":
@@ -243,14 +258,28 @@ public class Facetas {
                     case "host_url":
                         doc.add(new StoredField(attr, val));
                         break;
-                    case "amenities": //limpiar datos 
-                        String cleanAmenities = val
-                            .replaceAll("[\\[\\]\"]", "") //eliminar corchetes y comillas
-                            .replaceAll("u2019", "'") //pack u2019n play == pack 'n play
-                            .trim(); //eliminar espacios iniciales o finales 
-                        
-                        doc.add(new TextField(attr, cleanAmenities, Field.Store.YES));
+                    case "amenities":
+                        if(val != null && !val.isEmpty()) {
+                            cleanData = val
+                                .replaceAll("[\\[\\]\"]", "")
+                                .replaceAll("u2019", "'")
+                                .trim();
+
+                            if(!cleanData.isEmpty()) {   // <-- validar después de limpiar
+                                doc.add(new TextField(attr, cleanData, Field.Store.YES));
+                                //doc.add(new FacetField(attr, cleanData));
+                            }
+
+                            // Dividir cada amenity individualmente y añadir como faceta
+                            String[] amenities = cleanData.split(",\\s*"); // separa por coma y posibles espacios
+                            for (String amenity : amenities) {
+                                if (!amenity.isEmpty()) {
+                                    doc.add(new FacetField(attr, amenity.trim()));
+                                }
+                            }
+                        }
                         break;
+
 
                     // TODO: add facets here
                     // practica5
@@ -258,11 +287,10 @@ public class Facetas {
                     case "host_neighbourhood":
                         if (!val.isEmpty()) {
                             cleanData = val.replaceAll("<[^>]+>", "");
-                        } else {
-                            cleanData = "No data";
-                        }
-                        doc.add(new TextField(attr, cleanData, Field.Store.YES));
-                        doc.add(new FacetField(attr, cleanData));
+                            doc.add(new TextField(attr, cleanData, Field.Store.YES));
+                            doc.add(new FacetField(attr, cleanData));
+                        } 
+
                         break;
                     case "host_name":
                         cleanData = val.replaceAll("<[^>]+>", "");
@@ -323,6 +351,7 @@ public class Facetas {
         return doc;
     }
 
+
     private void indexEntry(Map<String, Integer> map, List<String> values) {
         System.out.println("Indexing...");
         Document doc = getDocument(map, values);
@@ -331,11 +360,149 @@ public class Facetas {
             //practica 5
             writer.addDocument(facetsConfig.build(taxoWriter, doc));
 
+
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+/* 
+    public int createHostIndex(String docPath, int limit) throws Exception {
+        // Read the file before starting indexing
+        File file = new File(docPath);
 
+        List<List<String>> lines = new ArrayList<>();
+        try {
+
+            // Create an object of filereader
+            // class with CSV file as a parameter.
+            FileReader filereader = new FileReader(file);
+
+            // create csvReader object passing
+            // file reader as a parameter
+            CSVReader csvReader = new CSVReader(filereader);
+            String[] nextRecord;
+            List<String> rows = new ArrayList<>();
+            int count = 0;
+            // we are going to read data line by line
+            while ((nextRecord = csvReader.readNext()) != null && count < limit) {
+                for (String cell : nextRecord) {
+//                    System.out.print(cell+ " ");
+                    rows.add(cell);
+                }
+                lines.add(rows);
+                rows = new ArrayList<>();
+                System.out.println();
+                count++;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        Map<String, Integer> map = new HashMap<String, Integer>();
+        List<String> host = lines.getFirst();
+        map.put("host_url", host.indexOf("host_url"));
+        map.put("host_name", host.indexOf("host_name"));
+        map.put("host_since", host.indexOf("host_since"));
+        map.put("host_location", host.indexOf("host_location"));
+        map.put("host_about", host.indexOf("host_about"));
+        map.put("host_response_time", host.indexOf("host_response_time"));
+        map.put("host_is_superhost", host.indexOf("host_is_superhost"));
+        map.put("host_neighbourhood", host.indexOf("host_neighbourhood"));
+
+        for (List<String> row : lines) {
+            try {
+                indexEntry(map, row);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+
+        return writer.getDocStats().numDocs;
+    }
+
+    public int createPropertyIndex(String docPath, int limit) throws Exception {
+        // Read the file before starting indexing
+        File file = new File(docPath);
+        List<List<String>> lines = new ArrayList<>();
+        try {
+            // Create an object of filereader class with CSV file as a parameter.
+            FileReader filereader = new FileReader(file);
+            // create csvReader object passing file reader as a parameter
+            CSVReader csvReader = new CSVReader(filereader);
+            String[] nextRecord;
+            List<String> rows = new ArrayList<>();
+            int count = 0;
+            // we are going to read data line by line
+            while ((nextRecord = csvReader.readNext()) != null && count < limit) {
+                for (String cell : nextRecord) {
+                    // System.out.print(cell+ " ");
+                    rows.add(cell);
+                }
+                lines.add(rows);
+                rows = new ArrayList<>();
+                System.out.println();
+                count++;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        Map<String, Integer> map = new HashMap<String, Integer>();
+        List<String> host = lines.getFirst(); //atributos elena
+        map.put("id", host.indexOf("id"));
+        map.put("listing_url", host.indexOf("listing_url"));
+        map.put("name", host.indexOf("name"));
+        map.put("description", host.indexOf("description"));
+        map.put("neighborhood_overview", host.indexOf("neighborhood_overview"));
+        map.put("neighbourhood_cleansed", host.indexOf("neighbourhood_cleansed"));
+        map.put("latitude", host.indexOf("latitude"));
+        map.put("longitude", host.indexOf("longitude"));
+        map.put("property_type", host.indexOf("property_type"));
+        map.put("bathrooms", host.indexOf("bathrooms"));
+        map.put("bathrooms_text", host.indexOf("bathrooms_text"));
+        map.put("bedrooms", host.indexOf("bedrooms"));
+        map.put("amenities", host.indexOf("amenities"));
+        map.put("price", host.indexOf("price"));
+        map.put("number_of_reviews", host.indexOf("number_of_reviews"));
+        map.put("review_scores_rating", host.indexOf("review_scores_rating"));
+
+        for (List<String> row: lines) {
+            try {
+                indexEntry(map, row);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        return writer.getDocStats().numDocs; // eso no funciona :(
+        
+        // Scanner inputStream;
+        // try {
+        //     inputStream = new Scanner(file);
+        //     int count = 0
+        //     while (inputSteam.hasNext() && count < 101) {
+        //         String line = inputStream.next();
+        //         String[] values = line.split(",");
+        //         lines.add(Arrays.asList(values));
+        //         count++;
+        //     }
+        //     inputStream.close();
+        // } catch (FileNotFoundException e) {
+        //     e.printStackTrace();
+        // }
+        // the following code lets you iterate through the 2-dimensional array
+        // int lineNo = 1;
+        // for(List<String> line: lines) {
+        //     int columnNo = 1;
+        //     for (String value: line) {
+        //         System.out.println("Line " + lineNo + " Column " + columnNo + ": " + value);
+        //         columnNo++;
+        //     }
+        //     lineNo++;
+        // }
+    }
+*/
     public void close() throws CorruptIndexException, IOException{
         try {
             writer.commit();
@@ -378,7 +545,7 @@ public class Facetas {
 
         // Mapas para host y propiedad
         Map<String, Integer> map = new HashMap<>();
-        if (cat.equals("host") || cat.equals("all")) {
+        //if (cat.equals("host")) {
             map.put("host_url", header.indexOf("host_url"));
             map.put("host_name", header.indexOf("host_name"));
             map.put("host_since", header.indexOf("host_since"));
@@ -387,8 +554,8 @@ public class Facetas {
             map.put("host_response_time", header.indexOf("host_response_time"));
             map.put("host_is_superhost", header.indexOf("host_is_superhost"));
             map.put("host_neighbourhood", header.indexOf("host_neighbourhood"));
-        }
-        if (cat.equals("prop") || cat.equals("all")) {
+
+        //} else if (cat.equals("prop")) {
             map.put("id", header.indexOf("id"));
             map.put("listing_url", header.indexOf("listing_url"));
             map.put("name", header.indexOf("name"));
@@ -406,7 +573,7 @@ public class Facetas {
             map.put("number_of_reviews", header.indexOf("number_of_reviews"));
             map.put("review_scores_rating", header.indexOf("review_scores_rating"));
 
-        }
+        //}
 
 
         // Iterar filas y crear ambos documentos
@@ -416,6 +583,97 @@ public class Facetas {
         }
 
         return writer.getDocStats().numDocs;
+    }
+
+    /** User runs a query and counts facets. */
+    private List<FacetResult> searchHost() throws IOException {
+        DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+        IndexSearcher searcher = new IndexSearcher(indexReader);
+        String taxoDir = indexPath + "_taxo";
+        TaxonomyReader taxoReader = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(taxoDir)));
+        FacetsCollectorManager fcm = new FacetsCollectorManager();
+        // MatchAllDocsQuery is for "browsing" (counts facets
+        // for all non-deleted docs in the index); normally
+        // you'd use a "normal" query:
+        FacetsCollector fc =
+            FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
+
+        // Retrieve results
+        List<FacetResult> results = new ArrayList<>();
+        // Count both "Publish Date" and "Author" dimensions
+        Facets counts = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
+        results.add(counts.getTopChildren(10, "host_neighbourhood"));
+        results.add(counts.getTopChildren(10, "host_since"));
+        results.add(counts.getTopChildren(10, "host_name"));
+        results.add(counts.getTopChildren(10, "host_is_superhost"));
+        results.add(counts.getTopChildren(10, "host_location"));
+
+        IOUtils.close(indexReader, taxoReader);
+
+        return results;
+    }
+
+    private List<FacetResult> searchProp() throws IOException {
+        DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+        IndexSearcher searcher = new IndexSearcher(indexReader);
+        String taxoDir = indexPath + "_taxo";
+        TaxonomyReader taxoReader = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(taxoDir)));
+
+
+        FacetsCollectorManager fcm = new FacetsCollectorManager();
+        // MatchAllDocsQuery is for "browsing" (counts facets
+        // for all non-deleted docs in the index); normally
+        // you'd use a "normal" query:
+        FacetsCollector fc =
+            FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
+
+        // Retrieve results
+        List<FacetResult> results = new ArrayList<>();
+        // Count both "Publish Date" and "Author" dimensions
+        Facets counts = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
+
+        
+
+        results.add(counts.getTopChildren(10, "neighbourhood_cleansed"));
+        results.add(counts.getTopChildren(10, "amenities"));
+        results.add(counts.getTopChildren(10, "property_type"));
+        
+
+        
+        // FACETAS NUMÉRICAS POR RANGO
+        DoubleRange[] priceRanges = new DoubleRange[] {
+            new DoubleRange("0-100", 0, true, 100, true),
+            new DoubleRange("101-200", 101, true, 200, true),
+            new DoubleRange("201-500", 201, true, 500, true),
+            new DoubleRange("500+", 500, false, Double.MAX_VALUE, true)
+        };
+
+
+        Facets facets = new DoubleRangeFacetCounts("price", fc, priceRanges);
+        //Facets facets = new LongValueFacetCounts("price", fc);
+        FacetResult resultado = facets.getAllChildren("price");
+        results.add(resultado);
+
+        DoubleRange[] reviewRanges = new DoubleRange[] {
+            new DoubleRange("0-1", 0, true, 1, false),
+            new DoubleRange("1-2", 1, true, 2, false),
+            new DoubleRange("2-3", 2, true, 3, false),
+            new DoubleRange("3-4", 3, true, 4, false),
+            new DoubleRange("4-5", 4, true, Double.MAX_VALUE, true)
+        };
+
+        Facets facets2 = new DoubleRangeFacetCounts("review_scores_rating", fc, reviewRanges);
+        FacetResult resultado2 = facets2.getAllChildren("review_scores_rating");
+        results.add(resultado2);
+
+        results.add(counts.getTopChildren(10, "bathrooms"));
+        results.add(counts.getTopChildren(10, "bedrooms"));
+        
+        
+
+        IOUtils.close(indexReader, taxoReader);
+
+        return results;
     }
 
     public Map<Integer, String> mostrarFacetas(IndexSearcher searcher, Query query) throws IOException {
@@ -441,6 +699,9 @@ public class Facetas {
             opciones.put(id, fr.dim);
             id++;
         }
+        //añado manualmente price
+        System.out.println(id + ") price");
+        opciones.put(id++, "price");
 
         IOUtils.close(indexReader, taxoReader);
         return opciones;
@@ -448,6 +709,26 @@ public class Facetas {
 
     public Map<Integer, String> mostrarValoresFaceta(String faceta, IndexSearcher searcher, Query query) throws IOException {
 
+        // --- FACETA PRICE: valores manuales ---
+        if (faceta.equals("price")) {
+            System.out.println("\nValores para la faceta: price");
+
+            Map<Integer, String> vals = new LinkedHashMap<>();
+            vals.put(1, "0-100");
+            vals.put(2, "101-200");
+            vals.put(3, "201-500");
+            vals.put(4, "500+");
+
+            int id = 1;
+            for (Map.Entry<Integer, String> e : vals.entrySet()) {
+                System.out.println(id + ") " + e.getValue());
+                id++;
+            }
+
+            return vals;
+        }
+
+        // --- RESTO DE FACETAS NORMALES ---
         DirectoryReader ir = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
         TaxonomyReader tr = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(indexPath + "_taxo")));
 
@@ -458,9 +739,16 @@ public class Facetas {
 
         FacetResult fr = facets.getTopChildren(20, faceta);
 
-        Map<Integer, String> result = new HashMap<>();
+        Map<Integer, String> result = new LinkedHashMap<>();
 
         System.out.println("\nValores para la faceta: " + faceta);
+
+        if (fr == null || fr.labelValues == null) {
+            System.out.println("(sin valores disponibles)");
+            IOUtils.close(ir, tr);
+            return result;
+        }
+
         int id = 1;
         for (LabelAndValue lv : fr.labelValues) {
             System.out.println(id + ") " + lv.label + " (" + lv.value + ")");
@@ -472,14 +760,57 @@ public class Facetas {
         return result;
     }
 
+
     public TopDocs aplicarFaceta(IndexSearcher searcher, Query baseQuery, String faceta, String valor) throws IOException {
         DrillDownQuery ddq = new DrillDownQuery(facetsConfig, baseQuery);
         ddq.add(faceta, valor);
         return searcher.search(ddq, 10);
     }
 
+    // método para mostrar rangos de precio
+    private DoubleRange parsePriceRange(String label) {
+        switch (label) {
+            case "0-100":
+                return new DoubleRange("0-100", 0, true, 100, true);
+            case "101-200":
+                return new DoubleRange("101-200", 101, true, 200, true);
+            case "201-500":
+                return new DoubleRange("201-500", 201, true, 500, true);
+            case "500+":
+                return new DoubleRange("500+", 500, false, Double.MAX_VALUE, true);
+        }
+        return null;
+    }
 
-   public static void indexSearch(String indexHost, String indexProp, Analyzer analyzer, Integer top) throws IOException, org.apache.lucene.queryparser.classic.ParseException {
+    //como no es categórica necesita una implementación distinta:
+    public TopDocs aplicarFacetaPrice(IndexSearcher searcher, Query original, String priceLabel) throws IOException {
+
+        DoubleRange r = parsePriceRange(priceLabel);
+
+        FacetsCollectorManager fcm = new FacetsCollectorManager();
+        FacetsCollector fc = FacetsCollectorManager.search(searcher, original, 10, fcm).facetsCollector();
+
+
+        Facets facets = new DoubleRangeFacetCounts("price", fc, new DoubleRange[]{ r });
+
+        Query priceQuery = DoublePoint.newRangeQuery(
+                "price",
+                r.min, 
+                r.max  
+        );
+
+        BooleanQuery filtered = new BooleanQuery.Builder()
+                .add(original, BooleanClause.Occur.MUST)
+                .add(priceQuery, BooleanClause.Occur.MUST)
+                .build();
+
+        return searcher.search(filtered, 10);
+    }
+
+
+
+
+    public static void indexSearch(String indexHost, String indexProp, Analyzer analyzer, Integer top) throws IOException, org.apache.lucene.queryparser.classic.ParseException {
         //DirectoryReader readerH = DirectoryReader.open(FSDirectory.open(Paths.get(indexHost)));
         //DirectoryReader readerP = DirectoryReader.open(FSDirectory.open(Paths.get(indexProp)));
         DirectoryReader reader = DirectoryReader.open(FSDirectory.open(Paths.get(indexProp)));
@@ -504,6 +835,7 @@ public class Facetas {
         columns.add("neighbourhood_overview");
         columns.add("neighbourhood_cleansed");
         columns.add("amenities");
+        //columns.add("price");
         for (String s: columns) {
             parsers.add(new QueryParser(s, analyzer));
         }
@@ -514,7 +846,7 @@ public class Facetas {
             System.out.println("Consulta?: ");
 
             line = in.readLine();
-            if (line == null || line.length() == -1 || line.equalsIgnoreCase("terminar")) {
+            if (line == null || line.length() == -1) {
                 break;
             }
             // Eliminamos caracteres blancos al inicio y al final
@@ -524,6 +856,7 @@ public class Facetas {
             }
 
             Query query = new MatchAllDocsQuery();
+            //Query originalquery =  new MultiFieldQueryParser(columns.toArray(new String[0]), analyzer).parse(line);
             TopDocs[] hits = new TopDocs[columns.size()];
             
             // Determine how many top hits do we want
@@ -531,10 +864,10 @@ public class Facetas {
                 for (QueryParser p: parsers) {
                     int idx = parsers.indexOf(p);
                     query = p.parse(line);
-
+                   // originalquery = parsers.get(0).parse(line);
                     hits[idx] = searcher.search(query, top);
 //                    System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
-            }
+                }
             //} catch (ParseException e) {
             //    System.out.println("Error en cadena consulta.");
             //    continue;
@@ -545,14 +878,14 @@ public class Facetas {
             topScores = new HashMap<>();
 
             for (int i = top-1; i >= 0; i--) {
-                for (TopDocs hit : hits) {
-                    if (hit.scoreDocs.length == 0) {
+                for (int j = 0; j < hits.length; j++) {
+                    if (hits[j].scoreDocs.length == 0) {
                         ;
                     } else {
-                        if (hit.scoreDocs.length > i) {
-                            ScoreDoc sd = hit.scoreDocs[i];
+                        if (hits[j].scoreDocs.length > i) {
+                            ScoreDoc sd = hits[j].scoreDocs[i];
                             if (topScores.size() < top) {
-                                topScores.put(sd, sd.score);
+                             topScores.put(sd, sd.score);
 //                            System.out.println("Add documnet: " + sd.doc + ", Score: " + sd.score);
                             } else {
                                 ScoreDoc min = null;
@@ -584,28 +917,32 @@ public class Facetas {
 //                    System.out.println("ID: " + id);
                 System.out.println("property_type: " + doc.get("property_type"));
 //                System.out.println("description: " + doc.get("description"));
-                System.out.println("amenities: " + doc.get("amenities"));
+                //System.out.println("amenities: " + doc.get("amenities"));
                 System.out.println("host_about " + doc.get("host_about"));
                 System.out.println("host_location " + doc.get("host_location"));
                 System.out.println("host_neighbourhood " + doc.get("host_neighbourhood"));
                 System.out.println("host_name " + doc.get("host_name"));
+                System.out.println("price " + doc.get("price"));
+                
 //                System.out.println("information " + doc.get("information"));
                 System.out.println();
             }
 
+//                ScoreDoc[] hits = results.scoreDocs;
+
+
+//                int numTotalHits = hits.totalHits.value();
 
             if (line.equals("")) {
                 break;
             }
+            
+            System.out.println("¿Aplicar facetas? (si/no)");
+            String opcion = in.readLine();
 
-            String opcion = "si o nod";
-            while (!opcion.equals("no")) {
-                System.out.println("¿Aplicar facetas? (si/no)");
-                opcion = in.readLine();
+            if (opcion.equalsIgnoreCase("si")) {
 
-                if (opcion.equalsIgnoreCase("si")) {
-
-                    Facetas fac = new Facetas(indexProp, true);
+                Facetas fac = new Facetas(indexProp, true);
 
                 // 1. Mostrar facetas
                 Map<Integer, String> facetas = fac.mostrarFacetas(searcher, query);
@@ -621,8 +958,14 @@ public class Facetas {
                 int vsel = Integer.parseInt(in.readLine());
                 String valorElegido = valores.get(vsel);
 
-                // 3. Aplicar DrillDown
-                TopDocs filtrados = fac.aplicarFaceta(searcher, query, facetaElegida, valorElegido);
+                // 3. Aplicar faceta (normal o por rango)
+                TopDocs filtrados;
+
+                if (facetaElegida.equals("price")) {
+                    filtrados = fac.aplicarFacetaPrice(searcher, query, valorElegido);
+                } else {
+                    filtrados = fac.aplicarFaceta(searcher, query, facetaElegida, valorElegido);
+                }
 
                 System.out.println("\n--- RESULTADOS FILTRADOS ---");
 
@@ -630,18 +973,18 @@ public class Facetas {
                     StoredFields sf = searcher.storedFields();
                     Document d = sf.document(sd.doc);   
 
-                        System.out.println("Doc " + sd.doc + " score=" + sd.score);
-                        System.out.println("property_type: " + d.get("property_type"));
-                        System.out.println("amenities: " + d.get("amenities"));
-                        System.out.println("host_location: " + d.get("host_location"));
-                        System.out.println("price: " + d.get("price"));
-                        System.out.println("----------------------------------");
-                    }
+                    System.out.println("Doc " + sd.doc + " score=" + sd.score);
+                    System.out.println("property_type: " + d.get("property_type"));
+                    System.out.println("price " + d.get("price"));
+                    System.out.println("description: " + d.get("description"));
+
+                    //System.out.println("amenities: " + d.get("amenities"));
+                    System.out.println("----------------------------------");
                 }
+
             }
-            System.out.println("Para terminar, entrar: Terminar");
-            line = in.readLine();
-        } while (!line.equalsIgnoreCase("Terminar"));
+
+        } while (!line.equals("Facetas"));
         try {
             //readerP.close();
             //readerH.close();
@@ -653,97 +996,7 @@ public class Facetas {
         }
     }
 
-    private List<FacetResult> searchHost() throws IOException {
-        DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
-        IndexSearcher searcher = new IndexSearcher(indexReader);
-        String taxoDir = indexPath + "_taxo";
-        TaxonomyReader taxoReader = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(taxoDir)));
-        FacetsCollectorManager fcm = new FacetsCollectorManager();
-        // MatchAllDocsQuery is for "browsing" (counts facets
-        // for all non-deleted docs in the index); normally
-        // you'd use a "normal" query:
-        FacetsCollector fc =
-            FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
-
-        // Retrieve results
-        List<FacetResult> results = new ArrayList<>();
-        // Count both "Publish Date" and "Author" dimensions
-        Facets counts = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
-        results.add(counts.getTopChildren(10, "host_neighbourhood"));
-        results.add(counts.getTopChildren(10, "host_since"));
-        results.add(counts.getTopChildren(10, "host_name"));
-        results.add(counts.getTopChildren(10, "host_is_superhost"));
-        results.add(counts.getTopChildren(10, "host_location"));
-
-        IOUtils.close(indexReader, taxoReader);
-
-        return results;
-    }
-
-       private List<FacetResult> searchProp() throws IOException {
-        DirectoryReader indexReader = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
-        IndexSearcher searcher = new IndexSearcher(indexReader);
-        String taxoDir = indexPath + "_taxo";
-        TaxonomyReader taxoReader = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(taxoDir)));
-
-
-        FacetsCollectorManager fcm = new FacetsCollectorManager();
-        // MatchAllDocsQuery is for "browsing" (counts facets
-        // for all non-deleted docs in the index); normally
-        // you'd use a "normal" query:
-        FacetsCollector fc =
-            FacetsCollectorManager.search(searcher, new MatchAllDocsQuery(), 10, fcm).facetsCollector();
-
-        // Retrieve results
-        List<FacetResult> results = new ArrayList<>();
-        // Count both "Publish Date" and "Author" dimensions
-        Facets counts = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
-
-
-
-        results.add(counts.getTopChildren(10, "neighbourhood_cleansed"));
-        results.add(counts.getTopChildren(10, "amenities"));
-        results.add(counts.getTopChildren(10, "property_type"));
-
-
-
-        // FACETAS NUMÉRICAS POR RANGO
-        DoubleRange[] priceRanges = new DoubleRange[] {
-            new DoubleRange("0-100", 0, true, 100, true),
-            new DoubleRange("101-200", 101, true, 200, true),
-            new DoubleRange("201-500", 201, true, 500, true),
-            new DoubleRange("500+", 500, false, Double.MAX_VALUE, true)
-        };
-
-
-        Facets facets = new DoubleRangeFacetCounts("price", fc, priceRanges);
-        //Facets facets = new LongValueFacetCounts("price", fc);
-        FacetResult resultado = facets.getAllChildren("price");
-        results.add(resultado);
-
-        DoubleRange[] reviewRanges = new DoubleRange[] {
-            new DoubleRange("0-1", 0, true, 1, false),
-            new DoubleRange("1-2", 1, true, 2, false),
-            new DoubleRange("2-3", 2, true, 3, false),
-            new DoubleRange("3-4", 3, true, 4, false),
-            new DoubleRange("4-5", 4, true, Double.MAX_VALUE, true)
-        };
-
-        Facets facets2 = new DoubleRangeFacetCounts("review_scores_rating", fc, reviewRanges);
-        FacetResult resultado2 = facets2.getAllChildren("review_scores_rating");
-        results.add(resultado2);
-
-        results.add(counts.getTopChildren(10, "bathrooms"));
-        results.add(counts.getTopChildren(10, "bedrooms"));
-
-
-
-        IOUtils.close(indexReader, taxoReader);
-
-        return results;
-    }
-
-   public static void main(String[] args) throws Exception {
+    public static void main(String[] args) throws Exception {
         //"Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
        // if (args.length < 5) {
         //    System.out.println("Uso: java LukeIndex <ruta_csv> <ruta_indice_propiedad> <ruta_indice_anfitrion> <límite_filas> <modo>");
@@ -764,73 +1017,70 @@ public class Facetas {
 //        int limit = 1000;
         //indexSearch(hostIndexPath, propIndexPath, new StandardAnalyzer(), 5);
 
-       switch (modo) {
-           case "indexar" -> {
+        if(modo.equals("indexar")){
 
-               // Analizador y similitud de Lucene
-               Analyzer analyzer = new StandardAnalyzer();
-               Similarity similarity = new ClassicSimilarity();
+            // Analizador y similitud de Lucene
+            Analyzer analyzer = new StandardAnalyzer();
+            Similarity similarity = new ClassicSimilarity();
 
-               // Crear indexadores
-               Facetas facetas = new Facetas(indexPath);
-               int numDocs = facetas.createBothIndices(csvPath, limit, "all");
-               System.out.println("Número de documentos indexados : " + numDocs);
-               facetas.close();
-               indexSearch(indexPath, indexPath, new StandardAnalyzer(), 5);
+            // Crear indexadores
+            Facetas facetas = new Facetas(indexPath);
+            int numDocs = facetas.createBothIndices(csvPath, limit, "all");
+            System.out.println("Número de documentos indexados : " + numDocs);
+            facetas.close();
+            indexSearch(indexPath, indexPath, new StandardAnalyzer(), 5);
 
-               // Indexar ambos índices simultáneamente
-               //int numDocsProp = propFacetas.createBothIndices(csvPath, limit, "prop");
-               //System.out.println("Número de documentos indexados de propiedad: " + numDocsProp);
+            // Indexar ambos índices simultáneamente
+            //int numDocsProp = propFacetas.createBothIndices(csvPath, limit, "prop");
+            //System.out.println("Número de documentos indexados de propiedad: " + numDocsProp);
 
-               //int numDocsHost = hostFacets.createBothIndices(csvPath, limit, "host");
-               //System.out.println("Número de documentos indexados de anfitrión: " + numDocsHost);
+            //int numDocsHost = hostFacets.createBothIndices(csvPath, limit, "host");
+            //System.out.println("Número de documentos indexados de anfitrión: " + numDocsHost);
 
-               // Cerrar indexadores
-               //propFacetas.close();
-               //hostFacets.close();
-           }
-           case "facetas_p" -> {
+            // Cerrar indexadores
+            //propFacetas.close();
+            //hostFacets.close();
+        }
+        else if(modo.equals("facetas_p")){
+            
+            String indexP = args[1];
+            //String indexPath = args[2];
+            String taxoPath = indexP + "_taxo";
 
-               String indexP = args[1];
-               //String indexPath = args[2];
-               String taxoPath = indexP + "_taxo";
+            Facetas f = new Facetas(indexP, true);
+            List<FacetResult> results = f.searchProp();
 
-               Facetas f = new Facetas(indexP, true);
-               List<FacetResult> results = f.searchProp();
+            System.out.println("Neighbourhood: " + results.get(0));
+            System.out.println("Amenities: " + results.get(1));
+            System.out.println("PropertyType: " + results.get(2));
+            System.out.println("Price ranges: " + results.get(3));
+            System.out.println("Review scores: " + results.get(4));
+            System.out.println("Bathrooms: " + results.get(5));
+            System.out.println("Bedrooms: " + results.get(6));
 
-               System.out.println("Neighbourhood: " + results.get(0));
-               System.out.println("Amenities: " + results.get(1));
-               System.out.println("PropertyType: " + results.get(2));
-               System.out.println("Price ranges: " + results.get(3));
-               System.out.println("Review scores: " + results.get(4));
-               System.out.println("Bathrooms: " + results.get(5));
-               System.out.println("Bedrooms: " + results.get(6));
-
-               //indexSearch(hostIndexPath, propIndexPath, new StandardAnalyzer(), 5);
+            //indexSearch(hostIndexPath, propIndexPath, new StandardAnalyzer(), 5);
 
 
-           }
-           case "facetas_h" -> {
-               String indexP = args[2];
+        }
+        else if (modo.equals("facetas_h")) {
+            String indexP = args[2];
 //            String taxoPath = indexPath + "_taxo";
-               // String indexPath = hostIndexPath;
-               // String taxoPath = hostIndexPath + "_taxo";
+           // String indexPath = hostIndexPath;
+           // String taxoPath = hostIndexPath + "_taxo";
 
-               Facetas f = new Facetas(indexP, true);
-               List<FacetResult> results = f.searchHost();
+            Facetas f = new Facetas(indexP, true);
+            List<FacetResult> results = f.searchHost();
 
-               System.out.println("Host neighbourhood: " + results.get(0));
-               System.out.println("Host since: " + results.get(1));
-               System.out.println("Host name: " + results.get(2));
-               System.out.println("Superhost: " + results.get(3));
-               System.out.println("Location: " + results.get(4));
+            System.out.println("Host neighbourhood: " + results.get(0));
+            System.out.println("Host since: " + results.get(1));
+            System.out.println("Host name: " + results.get(2));
+            System.out.println("Superhost: " + results.get(3));
+            System.out.println("Location: " + results.get(4));
 
-           }
-       }
+        }
 
 
     }
-
 
 
 }
