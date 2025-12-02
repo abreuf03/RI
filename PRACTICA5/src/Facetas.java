@@ -85,22 +85,10 @@ public class Facetas {
         facetsConfig = new FacetsConfig();
 
         // Configurar facetas normales
-        facetsConfig.setMultiValued("neighbourhood_cleansed", false);
-        facetsConfig.setHierarchical("neighbourhood_cleansed", false);
-        
-        facetsConfig.setMultiValued("property_type", false);
         facetsConfig.setMultiValued("amenities", true);
-        facetsConfig.setMultiValued("host_name", false);
-        facetsConfig.setMultiValued("host_location", false);
-        facetsConfig.setMultiValued("host_neighbourhood", false);
-        facetsConfig.setMultiValued("host_is_superhost", false);
         facetsConfig.setHierarchical("host_since", true);
-
         facetsConfig.setHierarchical("bedrooms", true);
-        facetsConfig.setMultiValued("bedrooms", false);
-
         facetsConfig.setHierarchical("bathrooms", true);
-        facetsConfig.setMultiValued("bathrooms", false);
 
 
 //        System.out.println("FACET CONFIG: " + facetsConfig.getDimConfigs());
@@ -110,22 +98,10 @@ public class Facetas {
     public Facetas(String indexPath, boolean forSearchOnly) throws IOException {
         this.indexPath = indexPath;
         facetsConfig = new FacetsConfig();
-        facetsConfig.setMultiValued("neighbourhood_cleansed", false);
-        facetsConfig.setHierarchical("neighbourhood_cleansed", false);
-
-        facetsConfig.setMultiValued("property_type", false);
         facetsConfig.setMultiValued("amenities", true);
-        facetsConfig.setMultiValued("host_name", false);
-        facetsConfig.setMultiValued("host_location", false);
-        facetsConfig.setMultiValued("host_neighbourhood", false);
-        facetsConfig.setMultiValued("host_is_superhost", false);
         facetsConfig.setHierarchical("host_since", true);
-
         facetsConfig.setHierarchical("bedrooms", true);
-        facetsConfig.setMultiValued("bedrooms", false);
-
         facetsConfig.setHierarchical("bathrooms", true);
-        facetsConfig.setMultiValued("bathrooms", false);
     }
 
 
@@ -287,24 +263,24 @@ public class Facetas {
                     case "host_neighbourhood":
                         if (!val.isEmpty()) {
                             cleanData = val.replaceAll("<[^>]+>", "");
-                            doc.add(new TextField(attr, cleanData, Field.Store.YES));
+                            doc.add(new StringField(attr, cleanData, Field.Store.YES));
                             doc.add(new FacetField(attr, cleanData));
                         } 
 
                         break;
                     case "host_name":
                         cleanData = val.replaceAll("<[^>]+>", "");
-                        doc.add(new TextField(attr, cleanData, Field.Store.YES));
-                        doc.add(new FacetField(attr, cleanData));
+                        doc.add(new StringField(attr, cleanData, Field.Store.YES));
+//                        doc.add(new FacetField(attr, cleanData));
                         break;
 
                     case "host_is_superhost":
                         if ("t".equals(val)) {
-                            doc.add(new TextField(attr, "yes", Field.Store.YES));
+                            doc.add(new StringField(attr, "yes", Field.Store.YES));
                             doc.add(new FacetField("host_is_superhost", "superhost"));
 
                         } else if ("f".equals(val)) {
-                            doc.add(new TextField(attr, "no", Field.Store.YES));
+                            doc.add(new StringField(attr, "no", Field.Store.YES));
                             doc.add(new FacetField("host_is_superhost", "not superhost"));
 
                         } else {
@@ -670,8 +646,6 @@ public class Facetas {
     }
 
 
-
-
     public static void indexSearch(String indexHost, String indexProp, Analyzer analyzer, Integer top) throws IOException, org.apache.lucene.queryparser.classic.ParseException {
         //DirectoryReader readerH = DirectoryReader.open(FSDirectory.open(Paths.get(indexHost)));
         //DirectoryReader readerP = DirectoryReader.open(FSDirectory.open(Paths.get(indexProp)));
@@ -688,9 +662,9 @@ public class Facetas {
 
         columns.add("host_about");
         columns.add("host_location");
-        columns.add("host_name");
+//        columns.add("host_name");
         columns.add("host_neighbourhood");
-        columns.add("information");
+//        columns.add("information");
         columns.add("property_type");
         columns.add("bathrooms_text");
         columns.add("description");
@@ -724,13 +698,13 @@ public class Facetas {
             
             // Determine how many top hits do we want
            // try {
-                for (QueryParser p: parsers) {
-                    int idx = parsers.indexOf(p);
-                    query = p.parse(line);
-                   // originalquery = parsers.get(0).parse(line);
-                    hits[idx] = searcher.search(query, top);
+            for (QueryParser p: parsers) {
+                int idx = parsers.indexOf(p);
+                query = p.parse(line);
+               // originalquery = parsers.get(0).parse(line);
+                hits[idx] = searcher.search(query, top);
 //                    System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
-                }
+            }
             //} catch (ParseException e) {
             //    System.out.println("Error en cadena consulta.");
             //    continue;
@@ -784,7 +758,7 @@ public class Facetas {
                 System.out.println("host_about " + doc.get("host_about"));
                 System.out.println("host_location " + doc.get("host_location"));
                 System.out.println("host_neighbourhood " + doc.get("host_neighbourhood"));
-                System.out.println("host_name " + doc.get("host_name"));
+//                System.out.println("host_name " + doc.get("host_name"));
                 System.out.println("price " + doc.get("price"));
                 
 //                System.out.println("information " + doc.get("information"));
