@@ -544,7 +544,9 @@ public class Facetas {
         Facets facets = new FastTaxonomyFacetCounts(taxoReader, facetsConfig, fc);
 
         List<FacetResult> all = facets.getAllDims(20);
-
+        if (all.isEmpty()) {
+            return null;
+        }
         System.out.println("\n--- FACETAS DISPONIBLES ---");
         Map<Integer, String> opciones = new HashMap<>();
 
@@ -555,42 +557,87 @@ public class Facetas {
             id++;
         }
         //añado manualmente price
-        System.out.println(id + ") price");
-        opciones.put(id++, "price");
+        if (!all.isEmpty()) {
+            System.out.println(id + ") price");
+//        System.out.println(facets);
+//        System.out.println(facets.getTopChildren(10, "price"));
+            opciones.put(id++, "price");
+        }
 
         IOUtils.close(indexReader, taxoReader);
         return opciones;
     }
 
     public Map<Integer, String> mostrarValoresFaceta(String faceta, IndexSearcher searcher, Query query) throws IOException {
+        DirectoryReader ir = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+        TaxonomyReader tr = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(indexPath + "_taxo")));
+        FacetsCollectorManager fcm = new FacetsCollectorManager();
+        FacetsCollector fc = FacetsCollectorManager.search(searcher, query, 10, fcm).facetsCollector();
+        String[] ranges = new  String[] {"0-100", "100-200", "200-500", "500+"};
+        Facets facets = new DoubleRangeFacetCounts("price", fc, new DoubleRange(ranges[0], 0, true, 100, false),
+                new DoubleRange(ranges[1], 100, true, 200, false),
+                new DoubleRange(ranges[2], 200, true, 500, false),
+                new DoubleRange(ranges[3], 500, true, Double.MAX_VALUE, true));
 
         // --- FACETA PRICE: valores manuales ---
         if (faceta.equals("price")) {
             System.out.println("\nValores para la faceta: price");
 
-            Map<Integer, String> vals = new LinkedHashMap<>();
-            vals.put(1, "0-100");
-            vals.put(2, "100-200");
-            vals.put(3, "200-500");
-            vals.put(4, "500+");
+            FacetResult fr = facets.getTopChildren(3, "price");
 
-            int id = 1;
-            for (Map.Entry<Integer, String> e : vals.entrySet()) {
-                System.out.println(id + ") " + e.getValue());
-                id++;
+            Map<Integer, String> result = new LinkedHashMap<>();
+
+            if (fr == null || fr.labelValues == null) {
+                System.out.println("(sin valores disponibles)");
+                IOUtils.close(ir, tr);
+                return result;
             }
 
-            return vals;
+            Map<String, Number> output = new HashMap<>();
+            int count = 0;
+            while (count < ranges.length) {
+                for (LabelAndValue lav : fr.labelValues) {
+                    if (lav.label.equals(ranges[count])) {
+                        output.put(ranges[count], lav.value);
+                        result.put(count+1, lav.label);
+                        count++;
+                    }
+                }
+                count++;
+            }
+
+            for (int i = 0; i < ranges.length; i++) {
+                String key = ranges[i];
+                Number num = output.get(key);
+                if (num == null) {
+                    System.out.println((i+1) + ") " + key + " (" + 0 + ")");
+                } else {
+                    System.out.println((i+1) + ") " + key + " (" + num + ")");
+                }
+
+            }
+//
+//            Map<Integer, String> vals = new LinkedHashMap<>();
+//            vals.put(1, "0-100");
+//            vals.put(2, "100-200");
+//            vals.put(3, "200-500");
+//            vals.put(4, "500+");
+//
+//            int id = 1;
+//            for (Map.Entry<Integer, String> e : vals.entrySet()) {
+//                System.out.println(id + ") " + e.getValue());
+//                id++;
+//            }
+
+//            return vals;
+            return result;
         }
 
         // --- RESTO DE FACETAS NORMALES ---
-        DirectoryReader ir = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
-        TaxonomyReader tr = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(indexPath + "_taxo")));
+        fcm = new FacetsCollectorManager();
+        fc = FacetsCollectorManager.search(searcher, query, 100, fcm).facetsCollector();
 
-        FacetsCollectorManager fcm = new FacetsCollectorManager();
-        FacetsCollector fc = FacetsCollectorManager.search(searcher, query, 100, fcm).facetsCollector();
-
-        Facets facets = new FastTaxonomyFacetCounts(tr, facetsConfig, fc);
+        facets = new FastTaxonomyFacetCounts(tr, facetsConfig, fc);
 
         FacetResult fr = facets.getTopChildren(3, faceta);
 
@@ -795,11 +842,11 @@ public class Facetas {
                 System.out.println("property_type: " + doc.get("property_type"));
                 // System.out.println("description: " + doc.get("description"));
                 // System.out.println("amenities: " + doc.get("amenities"));
-                System.out.println("host_about " + doc.get("host_about"));
-                System.out.println("host_location " + doc.get("host_location"));
-                System.out.println("host_neighbourhood " + doc.get("host_neighbourhood"));
+                System.out.println("host_about: " + doc.get("host_about"));
+                System.out.println("host_location: " + doc.get("host_location"));
+                System.out.println("host_neighbourhood: " + doc.get("host_neighbourhood"));
                 // System.out.println("host_name " + doc.get("host_name"));
-                System.out.println("price " + doc.get("price"));
+                System.out.println("price: $" + doc.get("price"));
                 // System.out.println("information " + doc.get("information"));
                 System.out.println();
             }
@@ -810,13 +857,17 @@ public class Facetas {
 
             boolean seguirBusqueda = true;
             while (seguirBusqueda) {
+                Facetas facPreview = new Facetas(indexProp, true);
+                // Esto ya imprime las facetas como hasta ahora.
+                if (facPreview.mostrarFacetas(searcher, query) == null) {
+                    System.out.println("NO HAY FACETAS DISPONIBLES");
+                    break;
+                }
+
                 // Mostrar facetas disponibles (para informar)
                 System.out.println("\nFACETAS DISPONIBLES           | ORDENACIONES DISPONIBLES");
                 System.out.println("-----------------------------+------------------------------");
 
-                Facetas facPreview = new Facetas(indexProp, true);
-                // Esto ya imprime las facetas como hasta ahora.
-                facPreview.mostrarFacetas(searcher, query);
 
                 System.out.println("                             | 1) Score (relevancia por defecto)");
                 System.out.println("                             | 2) Precio ascendente");
@@ -995,19 +1046,17 @@ public class Facetas {
         */
 
 
-        String csvPath = "doc/listings.csv";        // Ruta al CSV
-        String indexPath = "index/IndexUnico"; //ruta del ÚNICO índice
-        //String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
-       // String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
-        int limit = 500; // Número máximo de filas a indexar (0 = todas)
-        String modo = "otro";
+//        String csvPath = "doc/listings.csv";        // Ruta al CSV
+//        String indexPath = "index/IndexUnico"; //ruta del ÚNICO índice
+//        //String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
+//       // String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
+//        int limit = 500; // Número máximo de filas a indexar (0 = todas)
+//        String modo = "otro";
 
-        //String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
-        //String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-        //String indexPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica5/index";
-        //String propIndexPath = "./propFacet";
-        //String hostIndexPath = "./hostFacet";
-        //int limit = 100;
+        String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
+        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
+        String indexPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica5/index";
+        int limit = 500;
 
         indexSearch(indexPath, indexPath, new StandardAnalyzer(), 3);
 
