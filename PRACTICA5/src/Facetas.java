@@ -91,6 +91,7 @@ public class Facetas {
         // Configurar facetas normales
         facetsConfig.setMultiValued("amenities", true);
         facetsConfig.setHierarchical("host_since", true);
+        facetsConfig.setHierarchical("neighbourhood_hier", true);
         //facetsConfig.setHierarchical("bedrooms", true);
         //facetsConfig.setHierarchical("bathrooms", true);
 
@@ -104,6 +105,7 @@ public class Facetas {
         facetsConfig = new FacetsConfig();
         facetsConfig.setMultiValued("amenities", true);
         facetsConfig.setHierarchical("host_since", true);
+        facetsConfig.setHierarchical("neighbourhood_hier", true);
         //facetsConfig.setHierarchical("bedrooms", true);
         //facetsConfig.setHierarchical("bathrooms", true);
     }
@@ -322,8 +324,8 @@ public class Facetas {
                         doc.add(new StringField(attr, val, Field.Store.YES));
 
                         //añadir faceta
-                        if(!val.isEmpty())
-                            doc.add(new FacetField("neighbourhood_cleansed", val));
+                        //if(!val.isEmpty())
+                        //    doc.add(new FacetField("neighbourhood_cleansed", val));
 
                         break;
                     case "property_type":
@@ -334,6 +336,28 @@ public class Facetas {
                             doc.add(new FacetField("property_type", val));
 
                         break;
+                    case "neighbourhood_group_cleansed":
+                        doc.add(new StringField(attr, val, Field.Store.YES));
+
+                        String barrio = null;
+                        try {
+                            Integer idxBarrio = map.get("neighbourhood_cleansed");
+                            if (idxBarrio != null) {
+                                barrio = values.get(idxBarrio);
+                            }
+                        } catch (Exception e) {
+                            // por si acaso
+                        }
+
+                        if (val != null && !val.isEmpty() &&
+                            barrio != null && !barrio.isEmpty()) {
+
+                            // Faceta jerárquica
+                            doc.add(new FacetField("neighbourhood_hier", val, barrio));
+                        }
+
+                        break;
+
                     default:
                         // Todos los demás atributos como StringField
                         doc.add(new StringField(attr, val, Field.Store.YES));
@@ -427,6 +451,7 @@ public class Facetas {
             map.put("price", header.indexOf("price"));
             map.put("number_of_reviews", header.indexOf("number_of_reviews"));
             map.put("review_scores_rating", header.indexOf("review_scores_rating"));
+            map.put("neighbourhood_group_cleansed",header.indexOf("neighbourhood_group_cleansed"));
 
         }
 
@@ -676,9 +701,9 @@ public class Facetas {
         switch (label) {
             case "0-100":
                 return new DoubleRange("0-100", 0, true, 100, false);
-            case "101-200":
+            case "100-200":
                 return new DoubleRange("100-200", 100, true, 200, false);
-            case "201-500":
+            case "200-500":
                 return new DoubleRange("200-500", 200, true, 500, false);
             case "500+":
                 return new DoubleRange("500+", 500, true, Double.MAX_VALUE, true);
@@ -731,6 +756,39 @@ public class Facetas {
         ddq.add(faceta, valor);
         return ddq;
     }
+
+    public Query aplicarFacetaJerarquicaAdicional(Query baseQuery,String faceta,String nivel1,String nivel2) {
+        DrillDownQuery ddq = new DrillDownQuery(facetsConfig, baseQuery);
+        ddq.add(faceta, nivel1, nivel2);
+        return ddq;
+    }
+
+    public Map<Integer,String> mostrarBarriosDeGrupo(String dim,String grupo,IndexSearcher searcher,Query query) throws IOException {
+        DirectoryReader ir = DirectoryReader.open(FSDirectory.open(Paths.get(indexPath)));
+        TaxonomyReader tr = new DirectoryTaxonomyReader(FSDirectory.open(Paths.get(indexPath + "_taxo")));
+
+        FacetsCollectorManager fcm = new FacetsCollectorManager();
+        FacetsCollector fc = FacetsCollectorManager.search(searcher, query, 100, fcm).facetsCollector();
+
+        Facets facets = new FastTaxonomyFacetCounts(tr, facetsConfig, fc);
+
+        FacetResult fr = facets.getTopChildren(20, dim, grupo);
+
+        Map<Integer, String> result = new LinkedHashMap<>();
+        if (fr != null && fr.labelValues != null) {
+            int id = 1;
+            for (LabelAndValue lv : fr.labelValues) {
+                System.out.println(id + ") " + lv.label + " (" + lv.value + ")");
+                result.put(id, lv.label);
+                id++;
+            }
+        }
+
+        IOUtils.close(ir, tr);
+        return result;
+    }
+
+
 
     public static void indexSearch(String indexHost, String indexProp, Analyzer analyzer, Integer top)
             throws IOException, org.apache.lucene.queryparser.classic.ParseException {
@@ -839,6 +897,7 @@ public class Facetas {
                 Document doc = storedFields.document(hit.doc);
                 System.out.println("--------------------------------------------------");
                 // System.out.println("ID: " + id);
+                System.out.println("name: " + doc.get("name"));
                 System.out.println("property_type: " + doc.get("property_type"));
                 // System.out.println("description: " + doc.get("description"));
                 // System.out.println("amenities: " + doc.get("amenities"));
@@ -863,15 +922,17 @@ public class Facetas {
                     System.out.println("NO HAY FACETAS DISPONIBLES");
                     break;
                 }
+                
 
                 // Mostrar facetas disponibles (para informar)
-                System.out.println("\nFACETAS DISPONIBLES           | ORDENACIONES DISPONIBLES");
+                System.out.println("\n                           | ORDENACIONES DISPONIBLES");
                 System.out.println("-----------------------------+------------------------------");
 
+                
 
-                System.out.println("                             | 1) Score (relevancia por defecto)");
+                System.out.println("                             | 1) Puntuación reseñas (descendente)");
                 System.out.println("                             | 2) Precio ascendente");
-                System.out.println("                             | 3) Precio descendente");
+
 
                 System.out.println("\nOpciones:");
                 System.out.println("1. Aplicar facetas");
@@ -926,7 +987,25 @@ public class Facetas {
                                 continue;
                             }
 
-                            if (facetaElegida.equals("price")) {
+                            if (facetaElegida.equals("neighbourhood_hier")) {
+                                // 1) mostrar grupos 
+                                Map<Integer, String> grupos = fac.mostrarValoresFaceta("neighbourhood_hier", searcher, currentQuery);
+                                System.out.println("Elige un grupo:");
+                                int gSel = Integer.parseInt(in.readLine());
+                                String grupoElegido = grupos.get(gSel);
+
+                                // 2) mostrar barrios dentro del grupo)
+
+                                Map<Integer, String> barrios = fac.mostrarBarriosDeGrupo("neighbourhood_hier",grupoElegido,searcher,currentQuery);
+
+                                System.out.println("Elige un barrio:");
+                                int bSel = Integer.parseInt(in.readLine());
+                                String barrioElegido = barrios.get(bSel);
+
+                                // 3) aplicar faceta jerárquica
+                                currentQuery = fac.aplicarFacetaJerarquicaAdicional(currentQuery,"neighbourhood_hier",grupoElegido,barrioElegido);
+                            } 
+                            else if (facetaElegida.equals("price")) {
                                 currentQuery = fac.aplicarFacetaPriceAdicional(currentQuery, valorElegido);
                             } else {
                                 currentQuery = fac.aplicarFacetaAdicional(currentQuery, facetaElegida, valorElegido);
@@ -985,6 +1064,7 @@ public class Facetas {
                                         System.out.println((name != null ? name : ("Doc " + sd.doc)) + " - " + score + " puntos");
                                     }
                                 }
+                            break;
                                     
                             case "2":
                                 // Ordenar por precio ascendente
@@ -1046,17 +1126,17 @@ public class Facetas {
         */
 
 
-//        String csvPath = "doc/listings.csv";        // Ruta al CSV
-//        String indexPath = "index/IndexUnico"; //ruta del ÚNICO índice
-//        //String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
+        String csvPath = "doc/listings.csv";        // Ruta al CSV
+        String indexPath = "index/IndexUnico"; //ruta del ÚNICO índice
+        //String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
 //       // String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
-//        int limit = 500; // Número máximo de filas a indexar (0 = todas)
-//        String modo = "otro";
+        int limit = 500; // Número máximo de filas a indexar (0 = todas)
+        String modo = "otro";
 
-        String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
-        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-        String indexPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica5/index";
-        int limit = 500;
+       // String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
+       // String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
+       // String indexPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica5/index";
+        //int limit = 500;
 
         indexSearch(indexPath, indexPath, new StandardAnalyzer(), 3);
 
