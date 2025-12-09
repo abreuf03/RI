@@ -8,6 +8,7 @@ import org.apache.lucene.document.*;
 import org.apache.lucene.facet.*;
 import org.apache.lucene.facet.FacetsCollectorManager.FacetsResult;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
+import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
@@ -41,7 +42,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -803,20 +803,7 @@ public class Facetas {
 
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         List<QueryParser> parsers = new ArrayList<>();
-        List<String> columns = new ArrayList<>();
-
-        columns.add("host_about");
-        columns.add("host_location");
-        //columns.add("host_name");
-        columns.add("host_neighbourhood");
-        //columns.add("information");
-        columns.add("property_type");
-        columns.add("bathrooms_text");
-        columns.add("description");
-        columns.add("neighbourhood_overview");
-        columns.add("neighbourhood_cleansed");
-        columns.add("amenities");
-        //columns.add("price");
+        String[] columns = prepareColumns();
 
         for (String s : columns) {
             parsers.add(new QueryParser(s, analyzer));
@@ -826,287 +813,310 @@ public class Facetas {
 
         consultaLoop:
         do {
-            System.out.println("Introducir una búsqueda: ");
-
+            System.out.println("Elegir la búsqueda para empezar: ");
+            System.out.println("1) Búsqueda básica");
+            System.out.println("2) Búsqueda avanzada");
             line = in.readLine();
-            if (line == null || line.length() == -1 || line.equalsIgnoreCase("terminar")) {
-                break;
-            }
+            if (line.equals("2")) {
+                consultaAvanzada(indexProp, analyzer);
+            } else {
+                System.out.println("Introducir una búsqueda: ");
 
-            // Eliminamos caracteres blancos al inicio y al final
-            line = line.trim();
-            if (line.isEmpty()) {
-                break;
-            }
-
-            Query query = new MatchAllDocsQuery();
-            //Query originalquery =  new MultiFieldQueryParser(columns.toArray(new String[0]), analyzer).parse(line);
-            TopDocs[] hits = new TopDocs[columns.size()];
-
-            // Determine how many top hits do we want
-            // try {
-            for (QueryParser p : parsers) {
-                int idx = parsers.indexOf(p);
-                query = p.parse(line);
-                // originalquery = parsers.get(0).parse(line);
-                hits[idx] = searcher.search(query, top);
-                // System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
-            }
-            //} catch (ParseException e) {
-            //    System.out.println("Error en cadena consulta.");
-            //    continue;
-            //}
-
-            StoredFields storedFields = searcher.storedFields();
-            HashMap<ScoreDoc, Float> topScores = new HashMap<>();
-
-            for (int i = top - 1; i >= 0; i--) {
-                for (TopDocs hit : hits) {
-                    if (hit.scoreDocs.length == 0) {
-                        continue;
-                    } else {
-                        if (hit.scoreDocs.length > i) {
-                            ScoreDoc sd = hit.scoreDocs[i];
-                            if (topScores.size() < top) {
-                                topScores.put(sd, sd.score);
-                                // System.out.println("Add documnet: " + sd.doc + ", Score: " + sd.score);
-                            } else {
-                                ScoreDoc min = null;
-                                for (ScoreDoc ksd : topScores.keySet()) {
-                                    if (ksd.score < sd.score) {
-                                        if (min == null || ksd.score < min.score) {
-                                            min = ksd;
-                                        }
-                                    }
-                                }
-                                if (min != null) {
-                                    topScores.remove(min);
-                                    // System.out.println("Remove document: " + min.doc + ", Score: " + min.score);
-                                    topScores.put(sd, sd.score);
-                                    // System.out.println("Add documnet: " + sd.doc + ", Score: " + sd.score);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // System.out.println("Top " + topScores.size() + " documentos encontrados: ");
-
-            for (ScoreDoc hit : topScores.keySet()) {
-                System.out.println(hit.doc + ", Score: " + hit.score);
-                Document doc = storedFields.document(hit.doc);
-                System.out.println("--------------------------------------------------");
-                // System.out.println("ID: " + id);
-                System.out.println("name: " + doc.get("name"));
-                System.out.println("property_type: " + doc.get("property_type"));
-                // System.out.println("description: " + doc.get("description"));
-                // System.out.println("amenities: " + doc.get("amenities"));
-                System.out.println("host_about: " + doc.get("host_about"));
-                System.out.println("host_location: " + doc.get("host_location"));
-                System.out.println("host_neighbourhood: " + doc.get("host_neighbourhood"));
-                // System.out.println("host_name " + doc.get("host_name"));
-                System.out.println("price: $" + doc.get("price"));
-                // System.out.println("information " + doc.get("information"));
-                System.out.println();
-            }
-
-            if (line.equals("")) {
-                break;
-            }
-
-            boolean seguirBusqueda = true;
-            while (seguirBusqueda) {
-                Facetas facPreview = new Facetas(indexProp, true);
-                // Esto ya imprime las facetas como hasta ahora.
-                if (facPreview.mostrarFacetas(searcher, query) == null) {
-                    System.out.println("NO HAY FACETAS DISPONIBLES");
+                line = in.readLine();
+                if (line == null || line.length() == -1 || line.equalsIgnoreCase("terminar")) {
                     break;
                 }
-                
 
-                // Mostrar facetas disponibles (para informar)
-                System.out.println("\n                           | ORDENACIONES DISPONIBLES");
-                System.out.println("-----------------------------+------------------------------");
-
-                
-
-                System.out.println("                             | 1) Puntuación reseñas (descendente)");
-                System.out.println("                             | 2) Precio ascendente");
-
-
-                System.out.println("\nOpciones:");
-                System.out.println("1. Aplicar facetas");
-                System.out.println("2. Ordenar resultados");
-                System.out.println("3. Realizar otra búsqueda");
-                System.out.println("4. Salir");
-
-                String opcionMenu = in.readLine();
-                if (opcionMenu == null) {
-                    break consultaLoop;
+                // Eliminamos caracteres blancos al inicio y al final
+                line = line.trim();
+                if (line.isEmpty()) {
+                    break;
                 }
 
-                switch (opcionMenu) {
+                Query query = new MatchAllDocsQuery();
+                //Query originalquery =  new MultiFieldQueryParser(columns.toArray(new String[0]), analyzer).parse(line);
+                TopDocs[] hits = new TopDocs[columns.length];
 
-                    case "1": { // Aplicar facetas (como antes, con múltiples facetas)
-                        Query currentQuery = query;
-                        Facetas fac = new Facetas(indexProp, true);
-                        boolean masFacetas = true;
+                // Determine how many top hits do we want
+                // try {
+                for (QueryParser p : parsers) {
+                    int idx = parsers.indexOf(p);
+                    query = p.parse(line);
+                    // originalquery = parsers.get(0).parse(line);
+                    hits[idx] = searcher.search(query, top);
+                    // System.out.println(hits[idx].totalHits.value() + " documentos encontrados");
+                }
+                //} catch (ParseException e) {
+                //    System.out.println("Error en cadena consulta.");
+                //    continue;
+                //}
 
-                        while (masFacetas) {
-                            Map<Integer, String> facetas = fac.mostrarFacetas(searcher, currentQuery);
+                StoredFields storedFields = searcher.storedFields();
+                HashMap<ScoreDoc, Float> topScores = new HashMap<>();
 
-                            if (facetas.isEmpty()) {
-                                System.out.println("No hay facetas disponibles para esta búsqueda");
-                                break;
-                            }
-
-                            System.out.println("Seleccione nº de faceta o 0 para salir:");
-                            int fsel = Integer.parseInt(in.readLine());
-                            if (fsel == 0) {
-                                break;
-                            }
-
-                            String facetaElegida = facetas.get(fsel);
-                            if (facetaElegida == null) {
-                                System.out.println("Opción de faceta no válida.");
-                                continue;
-                            }
-
-                            Map<Integer, String> valores = fac.mostrarValoresFaceta(facetaElegida, searcher, currentQuery);
-                            if (valores.isEmpty()) {
-                                System.out.println("No hay valores disponibles para la faceta seleccionada.");
-                                continue;
-                            }
-
-                            System.out.println("Seleccione un valor:");
-                            int vsel = Integer.parseInt(in.readLine());
-                            String valorElegido = valores.get(vsel);
-
-                            if (valorElegido == null) {
-                                System.out.println("Opción de valor no válida.");
-                                continue;
-                            }
-
-                            if (facetaElegida.equals("neighbourhood_hier")) {
-                                // 1) mostrar grupos 
-                                Map<Integer, String> grupos = fac.mostrarValoresFaceta("neighbourhood_hier", searcher, currentQuery);
-                                System.out.println("Elige un grupo:");
-                                int gSel = Integer.parseInt(in.readLine());
-                                String grupoElegido = grupos.get(gSel);
-
-                                // 2) mostrar barrios dentro del grupo)
-
-                                Map<Integer, String> barrios = fac.mostrarBarriosDeGrupo("neighbourhood_hier",grupoElegido,searcher,currentQuery);
-
-                                System.out.println("Elige un barrio:");
-                                int bSel = Integer.parseInt(in.readLine());
-                                String barrioElegido = barrios.get(bSel);
-
-                                // 3) aplicar faceta jerárquica
-                                currentQuery = fac.aplicarFacetaJerarquicaAdicional(currentQuery,"neighbourhood_hier",grupoElegido,barrioElegido);
-                            } 
-                            else if (facetaElegida.equals("price")) {
-                                currentQuery = fac.aplicarFacetaPriceAdicional(currentQuery, valorElegido);
-                            } else {
-                                currentQuery = fac.aplicarFacetaAdicional(currentQuery, facetaElegida, valorElegido);
-                            }
-
-                            TopDocs filtrados = searcher.search(currentQuery, top);
-                            System.out.println("\n--- RESULTADOS FILTRADOS ---");
-
-                            for (ScoreDoc sd : filtrados.scoreDocs) {
-                                StoredFields sf = searcher.storedFields();
-                                Document d = sf.document(sd.doc);
-
-                                System.out.println("Doc " + sd.doc + " score=" + sd.score);
-                                System.out.println("property_type: " + d.get("property_type"));
-                                System.out.println("price: $" + d.get("price"));
-                                System.out.println("description: " + d.get("description"));
-                                // System.out.println("host_location: " + d.get("host_location"));
-                                System.out.println("neighbourhood: " + d.get("neighbourhood_cleansed"));
-                                // System.out.println("amenities: " + d.get("amenities"));
-                                System.out.println("----------------------------------");
-                            }
-
-                            System.out.println("¿Quieres añadir otra faceta? (si/no)");
-                            String otra = in.readLine();
-                            if (!"si".equalsIgnoreCase(otra)) {
-                                masFacetas = false;
-                            }
-                        }
-
-                        // Después de aplicar facetas, volvemos al menú de opciones
-                        break;
-                    }
-
-                    case "2": { // Ordenar resultados
-                        System.out.println("Elige tipo de ordenación:");
-                        System.out.println("1) Puntuación reseñas descendente");
-                        System.out.println("2) Precio ascendente");
-                        String ord = in.readLine();
-                        switch (ord) {
-                            case "1":
-                                 // Ordenar por review_scores_rating descendente
-                                SortField sf = new SortField("review_scores_rating", SortField.Type.DOUBLE, true); // true = desc
-                                sf.setMissingValue(Double.NEGATIVE_INFINITY); // sin score al final al ordenar desc
-                                Sort orden = new Sort(sf);
-
-                                TopFieldDocs resultsOrdenados = searcher.search(query, top, orden);
-                                System.out.println("\n--- Resultados ordenados por puntuación de reseña (descendente) ---");
-                                for (ScoreDoc sd : resultsOrdenados.scoreDocs) {
-                                    Document d = storedFields.document(sd.doc);
-                                    String name = d.get("name");
-                                    IndexableField scoreField = d.getField("review_scores_rating");
-                                    if (scoreField == null) {
-                                        System.out.println((name != null ? name : ("Doc " + sd.doc)) + " - (sin puntuación)");
-                                    } else {
-                                        double score = scoreField.numericValue().doubleValue();
-                                        System.out.println((name != null ? name : ("Doc " + sd.doc)) + " - " + score + " puntos");
+                for (int i = top - 1; i >= 0; i--) {
+                    for (TopDocs hit : hits) {
+                        if (hit.scoreDocs.length == 0) {
+                            continue;
+                        } else {
+                            if (hit.scoreDocs.length > i) {
+                                ScoreDoc sd = hit.scoreDocs[i];
+                                if (topScores.size() < top) {
+                                    topScores.put(sd, sd.score);
+                                    // System.out.println("Add documnet: " + sd.doc + ", Score: " + sd.score);
+                                } else {
+                                    ScoreDoc min = null;
+                                    for (ScoreDoc ksd : topScores.keySet()) {
+                                        if (ksd.score < sd.score) {
+                                            if (min == null || ksd.score < min.score) {
+                                                min = ksd;
+                                            }
+                                        }
+                                    }
+                                    if (min != null) {
+                                        topScores.remove(min);
+                                        // System.out.println("Remove document: " + min.doc + ", Score: " + min.score);
+                                        topScores.put(sd, sd.score);
+                                        // System.out.println("Add documnet: " + sd.doc + ", Score: " + sd.score);
                                     }
                                 }
-                            break;
-                                    
-                            case "2":
-                                // Ordenar por precio ascendente
-                                SortField sf2 = new SortField("price", SortField.Type.DOUBLE, false); // false = asc
-                                sf2.setMissingValue(Double.POSITIVE_INFINITY); // sin precio al final
-                                Sort orden2 = new Sort(sf2);
-
-                                TopFieldDocs resultsOrdenados2 = searcher.search(query, top, orden2);
-                                System.out.println("\n--- Resultados ordenados por precio (ascendente) ---");
-                                for (ScoreDoc sd : resultsOrdenados2.scoreDocs) {
-                                    Document d = storedFields.document(sd.doc);
-                                    String name = d.get("name");
-                                    IndexableField priceField = d.getField("price");
-                                    if (priceField == null) {
-                                        System.out.println((name != null ? name : ("Doc " + sd.doc)) + " - (sin precio)");
-                                    } else {
-                                        double price = priceField.numericValue().doubleValue();
-                                        System.out.println((name != null ? name : ("Doc " + sd.doc)) + " - " + price + " $");
-                                    }
-                                }
-                                break;
-
-                            default:
-                                System.out.println("Opción de ordenación no válida.");
+                            }
                         }
+                    }
+                }
+                // System.out.println("Top " + topScores.size() + " documentos encontrados: ");
 
-                        break;
+                for (ScoreDoc hit : topScores.keySet()) {
+                    System.out.println(hit.doc + ", Score: " + hit.score);
+                    Document doc = storedFields.document(hit.doc);
+                    System.out.println("--------------------------------------------------");
+                    // System.out.println("ID: " + id);
+                    System.out.println("name: " + doc.get("name"));
+                    System.out.println("property_type: " + doc.get("property_type"));
+                    // System.out.println("description: " + doc.get("description"));
+                    // System.out.println("amenities: " + doc.get("amenities"));
+                    System.out.println("host_about: " + doc.get("host_about"));
+                    System.out.println("host_location: " + doc.get("host_location"));
+                    System.out.println("host_neighbourhood: " + doc.get("host_neighbourhood"));
+                    // System.out.println("host_name " + doc.get("host_name"));
+                    System.out.println("price: $" + doc.get("price"));
+                    // System.out.println("information " + doc.get("information"));
+                    System.out.println();
+                }
+
+                if (line.equals("")) {
+                    break;
+                }
+
+                boolean seguirBusqueda = true;
+                while (seguirBusqueda) {
+                    Facetas facPreview = new Facetas(indexProp, true);
+                    // Esto ya imprime las facetas como hasta ahora.
+                    if (facPreview.mostrarFacetas(searcher, query) == null) {
+                        System.out.println("NO HAY FACETAS DISPONIBLES");
+                        // Mostrar facetas disponibles (para informar)
+                        System.out.println("\n                           | ORDENACIONES DISPONIBLES");
+                        System.out.println("-----------------------------+------------------------------");
+
+
+                        System.out.println("                             | 1) Puntuación reseñas (descendente)");
+                        System.out.println("                             | 2) Precio ascendente");
+
+
+                        System.out.println("\nOpciones:");
+                        System.out.println("1. Ordenar resultados");
+                        System.out.println("2. Realizar otra búsqueda");
+                        System.out.println("3. Aplicar consulta avanzada");
+                        System.out.println("4. Salir");
+                    } else {
+                        // Mostrar facetas disponibles (para informar)
+                        System.out.println("\n                           | ORDENACIONES DISPONIBLES");
+                        System.out.println("-----------------------------+------------------------------");
+
+
+                        System.out.println("                             | 1) Puntuación reseñas (descendente)");
+                        System.out.println("                             | 2) Precio ascendente");
+
+
+                        System.out.println("\nOpciones:");
+                        System.out.println("1. Aplicar facetas");
+                        System.out.println("2. Ordenar resultados");
+                        System.out.println("3. Realizar otra búsqueda");
+                        System.out.println("4. Aplicar consulta avanzada");
+                        System.out.println("5. Salir");
                     }
 
-                    case "3": // Realizar otra búsqueda
-                        seguirBusqueda = false;
-                        break;
 
-                    case "4": // Salir
+                    String opcionMenu = in.readLine();
+                    if (opcionMenu == null) {
                         break consultaLoop;
+                    }
 
-                    default:
-                        System.out.println("Opción no válida.");
+                    switch (opcionMenu) {
+
+                        case "1": { // Aplicar facetas (como antes, con múltiples facetas)
+                            Query currentQuery = query;
+                            Facetas fac = new Facetas(indexProp, true);
+                            boolean masFacetas = true;
+
+                            while (masFacetas) {
+                                Map<Integer, String> facetas = fac.mostrarFacetas(searcher, currentQuery);
+
+                                if (facetas.isEmpty()) {
+                                    System.out.println("No hay facetas disponibles para esta búsqueda");
+                                    break;
+                                }
+
+                                System.out.println("Seleccione nº de faceta o 0 para salir:");
+                                int fsel = Integer.parseInt(in.readLine());
+                                if (fsel == 0) {
+                                    break;
+                                }
+
+                                String facetaElegida = facetas.get(fsel);
+                                if (facetaElegida == null) {
+                                    System.out.println("Opción de faceta no válida.");
+                                    continue;
+                                }
+
+                                Map<Integer, String> valores = fac.mostrarValoresFaceta(facetaElegida, searcher, currentQuery);
+                                if (valores.isEmpty()) {
+                                    System.out.println("No hay valores disponibles para la faceta seleccionada.");
+                                    continue;
+                                }
+
+                                System.out.println("Seleccione un valor:");
+                                int vsel = Integer.parseInt(in.readLine());
+                                String valorElegido = valores.get(vsel);
+
+                                if (valorElegido == null) {
+                                    System.out.println("Opción de valor no válida.");
+                                    continue;
+                                }
+
+                                if (facetaElegida.equals("neighbourhood_hier")) {
+                                    // 1) mostrar grupos
+                                    Map<Integer, String> grupos = fac.mostrarValoresFaceta("neighbourhood_hier", searcher, currentQuery);
+                                    System.out.println("Elige un grupo:");
+                                    int gSel = Integer.parseInt(in.readLine());
+                                    String grupoElegido = grupos.get(gSel);
+
+                                    // 2) mostrar barrios dentro del grupo)
+
+                                    Map<Integer, String> barrios = fac.mostrarBarriosDeGrupo("neighbourhood_hier", grupoElegido, searcher, currentQuery);
+
+                                    System.out.println("Elige un barrio:");
+                                    int bSel = Integer.parseInt(in.readLine());
+                                    String barrioElegido = barrios.get(bSel);
+
+                                    // 3) aplicar faceta jerárquica
+                                    currentQuery = fac.aplicarFacetaJerarquicaAdicional(currentQuery, "neighbourhood_hier", grupoElegido, barrioElegido);
+                                } else if (facetaElegida.equals("price")) {
+                                    currentQuery = fac.aplicarFacetaPriceAdicional(currentQuery, valorElegido);
+                                } else {
+                                    currentQuery = fac.aplicarFacetaAdicional(currentQuery, facetaElegida, valorElegido);
+                                }
+
+                                TopDocs filtrados = searcher.search(currentQuery, top);
+                                System.out.println("\n--- RESULTADOS FILTRADOS ---");
+
+                                for (ScoreDoc sd : filtrados.scoreDocs) {
+                                    StoredFields sf = searcher.storedFields();
+                                    Document d = sf.document(sd.doc);
+
+                                    System.out.println("Doc " + sd.doc + " score=" + sd.score);
+                                    System.out.println("property_type: " + d.get("property_type"));
+                                    System.out.println("price: $" + d.get("price"));
+                                    System.out.println("description: " + d.get("description"));
+                                    // System.out.println("host_location: " + d.get("host_location"));
+                                    System.out.println("neighbourhood: " + d.get("neighbourhood_cleansed"));
+                                    // System.out.println("amenities: " + d.get("amenities"));
+                                    System.out.println("----------------------------------");
+                                }
+
+                                System.out.println("¿Quieres añadir otra faceta? (si/no)");
+                                String otra = in.readLine();
+                                if (!"si".equalsIgnoreCase(otra)) {
+                                    masFacetas = false;
+                                }
+                            }
+
+                            // Después de aplicar facetas, volvemos al menú de opciones
+                            break;
+                        }
+
+                        case "2": { // Ordenar resultados
+                            System.out.println("Elige tipo de ordenación:");
+                            System.out.println("1) Puntuación reseñas descendente");
+                            System.out.println("2) Precio ascendente");
+                            String ord = in.readLine();
+                            switch (ord) {
+                                case "1":
+                                    // Ordenar por review_scores_rating descendente
+                                    SortField sf = new SortField("review_scores_rating", SortField.Type.DOUBLE, true); // true = desc
+                                    sf.setMissingValue(Double.NEGATIVE_INFINITY); // sin score al final al ordenar desc
+                                    Sort orden = new Sort(sf);
+
+                                    TopFieldDocs resultsOrdenados = searcher.search(query, top, orden);
+                                    System.out.println("\n--- Resultados ordenados por puntuación de reseña (descendente) ---");
+                                    for (ScoreDoc sd : resultsOrdenados.scoreDocs) {
+                                        Document d = storedFields.document(sd.doc);
+                                        String name = d.get("name");
+                                        IndexableField scoreField = d.getField("review_scores_rating");
+                                        if (scoreField == null) {
+                                            System.out.println((name != null ? name : ("Doc " + sd.doc)) + " - (sin puntuación)");
+                                        } else {
+                                            double score = scoreField.numericValue().doubleValue();
+                                            System.out.println((name != null ? name : ("Doc " + sd.doc)) + " - " + score + " puntos");
+                                        }
+                                    }
+                                    break;
+
+                                case "2":
+                                    // Ordenar por precio ascendente
+                                    SortField sf2 = new SortField("price", SortField.Type.DOUBLE, false); // false = asc
+                                    sf2.setMissingValue(Double.POSITIVE_INFINITY); // sin precio al final
+                                    Sort orden2 = new Sort(sf2);
+
+                                    TopFieldDocs resultsOrdenados2 = searcher.search(query, top, orden2);
+                                    System.out.println("\n--- Resultados ordenados por precio (ascendente) ---");
+                                    for (ScoreDoc sd : resultsOrdenados2.scoreDocs) {
+                                        Document d = storedFields.document(sd.doc);
+                                        String name = d.get("name");
+                                        IndexableField priceField = d.getField("price");
+                                        if (priceField == null) {
+                                            System.out.println((name != null ? name : ("Doc " + sd.doc)) + " - (sin precio)");
+                                        } else {
+                                            double price = priceField.numericValue().doubleValue();
+                                            System.out.println((name != null ? name : ("Doc " + sd.doc)) + " - " + price + " $");
+                                        }
+                                    }
+                                    break;
+
+                                default:
+                                    System.out.println("Opción de ordenación no válida.");
+                            }
+
+                            break;
+                        }
+
+                        case "3": // Realizar otra búsqueda
+                            seguirBusqueda = false;
+                            break;
+
+                        case "4": // consulta avanzada
+                            seguirBusqueda = false;
+                            consultaAvanzada(indexProp, analyzer);
+                        case "5": // Salir
+                            break consultaLoop;
+
+                        default:
+                            System.out.println("Opción no válida.");
+                    }
                 }
             }
 
-        } while (true);
+        } while (true) ;
 
         try {
             //readerP.close();
@@ -1115,6 +1125,156 @@ public class Facetas {
             reader.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+    private static String[] prepareColumns() {
+        String[] columns = new String[9];
+        columns[0] = "host_about";
+        columns[1] = "host_location";
+        columns[2] = "host_neighbourhood";
+        columns[3] = "property_type";
+        columns[4] = "bathrooms_text";
+        columns[5] = "description";
+        columns[6] = "neighbourhood_overview";
+        columns[7] = "neighbourhood_cleansed";
+        columns[8] = "amenities";
+
+        return columns;
+    }
+
+    private static void consultaAvanzada(String index, Analyzer analyzer) throws IOException, ParseException {
+        DirectoryReader reader = DirectoryReader.open(FSDirectory.open(Paths.get(index)));
+        IndexSearcher searcher = new IndexSearcher(reader);
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        boolean finishedTyping = false;
+        Map<Query, Integer> filters = new HashMap<>();
+        Map<Query, String> inputs = new HashMap<>();
+
+        System.out.println("Búsqueda avanzada");
+        List<String> options = new ArrayList<>();
+        options.add("Cualquier lugar");
+        options.add("En amenities");
+        options.add("En description");
+        options.add("En host_about");
+
+        while (!finishedTyping) {
+
+
+            System.out.println("Elegir uno de los campos que quiere usar: ");
+            for (int i = 0; i < options.size(); ++i) {
+                System.out.println(i+1 + ") " +options.get(i));
+            }
+
+            QueryParser parser;
+            String chosen = in.readLine();
+            String input;
+
+            switch (options.get(Integer.parseInt(chosen)-1)) {
+                case "Cualquier lugar" -> {
+                    System.out.println("Cualquier lugar: ");
+                    String[] columns = prepareColumns();
+
+                    parser = new MultiFieldQueryParser(columns, analyzer);
+                    input = in.readLine();
+//                    Query query = new MatchAllDocsQuery();
+//                    try {
+//                        query = parser.parse(input);
+//                    } catch (ParseException e) {
+//                        throw new RuntimeException(e);
+//                    }
+//                    TopDocs hit = searcher.search(query, 10);
+//                    StoredFields storedFields = searcher.storedFields();
+
+//                    System.out.println("Result: ");
+//                    for (ScoreDoc sd : hit.scoreDocs) {
+//                        Document d = storedFields.document(sd.doc);
+//                        System.out.println(sd.doc);
+//                    }
+                    filters.put(parser.parse(input), 1);
+                    inputs.put(parser.parse(input), input);
+                    break;
+                }
+                case "En amenities" -> {
+                    System.out.println("En amenities: ");
+                    input = in.readLine();
+                    parser = new QueryParser("amenities", analyzer);
+                    filters.put(parser.parse(input), 2);
+                    inputs.put(parser.parse(input), input);
+                    options.remove("En amenities");
+                    break;
+                }
+                case "En description" -> {
+                    System.out.println("En description: ");
+                    input = in.readLine();
+                    parser = new QueryParser("description", analyzer);
+                    filters.put(parser.parse(input), 3);
+                    inputs.put(parser.parse(input), input);
+                    options.remove("En description");
+                    break;
+                }
+                case "En host_about" -> {
+                    System.out.println("En host_about: ");
+                    input = in.readLine();
+                    parser = new QueryParser("host_about", analyzer);
+                    filters.put(parser.parse(input), 4);
+                    inputs.put(parser.parse(input), input);
+                    options.remove("En host_about");
+                    break;
+                }
+                default -> {
+                    System.out.println("Opción inválida.");
+                }
+            }
+            System.out.println("Quiere usar los otros campos también? (si/no)");
+
+            input = in.readLine();
+            if (!input.equalsIgnoreCase("si")) {
+                finishedTyping = true;
+            }
+
+        }
+        System.out.println("Búsqueda avanzada: ");
+        BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
+
+        for (Query query : filters.keySet()) {
+            int num = filters.get(query);
+            switch (num) {
+                case 1 -> {
+                    System.out.println("Cualquier lugar: ");
+                    queryBuilder.add(query, BooleanClause.Occur.SHOULD);
+                }
+                case 2 -> {
+                    System.out.println("En amenities: ");
+                    queryBuilder.add(query, BooleanClause.Occur.MUST);
+                }
+                case 3 -> {
+                    System.out.println("En description: ");
+                    queryBuilder.add(query, BooleanClause.Occur.MUST);
+                }
+                case 4 -> {
+                    System.out.println("En host_about: ");
+                    queryBuilder.add(query, BooleanClause.Occur.MUST);
+                }
+            }
+            System.out.println(inputs.get(query));
+        }
+        BooleanQuery bq = queryBuilder.build();
+
+        TopDocs filtered =  searcher.search(bq, 10);
+        System.out.println("\n--- RESULTADOS FILTRADOS ---");
+
+        for (ScoreDoc sd : filtered.scoreDocs) {
+            StoredFields sf = searcher.storedFields();
+            Document d = sf.document(sd.doc);
+
+            System.out.println("Doc " + sd.doc + " score=" + sd.score);
+            System.out.println("property_type: " + d.get("property_type"));
+            System.out.println("price: $" + d.get("price"));
+            System.out.println("description: " + d.get("description"));
+            // System.out.println("host_location: " + d.get("host_location"));
+            System.out.println("neighbourhood: " + d.get("neighbourhood_cleansed"));
+            // System.out.println("amenities: " + d.get("amenities"));
+            System.out.println("----------------------------------");
         }
     }
 
@@ -1126,17 +1286,17 @@ public class Facetas {
         */
 
 
-        String csvPath = "doc/listings.csv";        // Ruta al CSV
-        String indexPath = "index/IndexUnico"; //ruta del ÚNICO índice
-        //String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
-//       // String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
-        int limit = 500; // Número máximo de filas a indexar (0 = todas)
-        String modo = "otro";
+//        String csvPath = "doc/listings.csv";        // Ruta al CSV
+//        String indexPath = "index/IndexUnico"; //ruta del ÚNICO índice
+//        //String propIndexPath = args[1];    // Ruta donde se creará el índice de propiedad
+////       // String hostIndexPath = args[2];    // Ruta donde se creará el índice de anfitrión
+//        int limit = 500; // Número máximo de filas a indexar (0 = todas)
+//        String modo = "otro";
 
-       // String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
-       // String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
-       // String indexPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica5/index";
-        //int limit = 500;
+        String modo = "indexar"; // "indexar", "facetas_p", "facetas_h"
+        String csvPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/practica3/listings.csv";
+        String indexPath = "/Users/tsan-yuwu/Library/CloudStorage/OneDrive-StudentsRWTHAachenUniversity/Erasmus/RI/index/IndexUnico";
+        int limit = 500;
 
         indexSearch(indexPath, indexPath, new StandardAnalyzer(), 3);
 
