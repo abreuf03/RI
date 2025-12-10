@@ -791,7 +791,7 @@ public class Facetas {
 
 
     public static void indexSearch(String indexHost, String indexProp, Analyzer analyzer, Integer top)
-            throws IOException, org.apache.lucene.queryparser.classic.ParseException {
+            throws IOException, ParseException {
 
         //DirectoryReader readerH = DirectoryReader.open(FSDirectory.open(Paths.get(indexHost)));
         //DirectoryReader readerP = DirectoryReader.open(FSDirectory.open(Paths.get(indexProp)));
@@ -1171,6 +1171,10 @@ public class Facetas {
 
             switch (key) {
                 case "Cualquier lugar" -> {
+                    if (inputs.containsKey(key)) {
+                        System.out.println("El valor en este campo: ");
+                        System.out.println(inputs.get(key));
+                    }
                     System.out.println("Cualquier lugar: ");
                     String[] columns = prepareColumns();
 
@@ -1185,30 +1189,53 @@ public class Facetas {
                     break;
                 }
                 case "En amenities" -> {
+                    if (inputs.containsKey(key)) {
+                        System.out.println("El valor en este campo: ");
+                        System.out.println(inputs.get(key));
+                    }
+
                     System.out.println("En amenities: ");
                     input = in.readLine();
                     parser = new QueryParser("amenities", analyzer);
                     filters.put(parser.parse(input), "2");
-                    inputs.put("En amenities", input);
-                    options.remove("En amenities");
+                    if (inputs.containsKey(key)) {
+                        inputs.put(key, inputs.get(key) + " " + input);
+                    } else {
+                        inputs.put(key, input);
+                    }
                     break;
                 }
                 case "En description" -> {
+                    if (inputs.containsKey(key)) {
+                        System.out.println("El valor en este campo: ");
+                        System.out.println(inputs.get(key));
+                    }
                     System.out.println("En description: ");
                     input = in.readLine();
                     parser = new QueryParser("description", analyzer);
                     filters.put(parser.parse(input), "3");
-                    inputs.put("En description", input);
-                    options.remove("En description");
+                    if (inputs.containsKey(key)) {
+                        inputs.put(key, inputs.get(key) + " " + input);
+                    } else {
+                        inputs.put(key, input);
+                    }
                     break;
                 }
                 case "En host_about" -> {
+                    if (inputs.containsKey(key)) {
+                        System.out.println("El valor en este campo: ");
+                        System.out.println(inputs.get(key));
+                    }
+
                     System.out.println("En host_about: ");
                     input = in.readLine();
                     parser = new QueryParser("host_about", analyzer);
                     filters.put(parser.parse(input), "4");
-                    inputs.put("En host_about", input);
-                    options.remove("En host_about");
+                    if (inputs.containsKey(key)) {
+                        inputs.put(key, inputs.get(key) + " " + input);
+                    } else {
+                        inputs.put(key, input);
+                    }
                     break;
                 }
                 default -> {
@@ -1229,25 +1256,24 @@ public class Facetas {
         for (Query query : filters.keySet()) {
             String num = filters.get(query);
             switch (num) {
-                case "1" -> {
-                    System.out.println("Cualquier lugar: ");
+                case "1" ->
                     queryBuilder.add(query, BooleanClause.Occur.SHOULD);
-                }
-                case "2" -> {
-                    System.out.println("En amenities: ");
+                case "2" ->
                     queryBuilder.add(query, BooleanClause.Occur.MUST);
-                }
-                case "3" -> {
-                    System.out.println("En description: ");
+                case "3" ->
                     queryBuilder.add(query, BooleanClause.Occur.MUST);
-                }
-                case "4" -> {
-                    System.out.println("En host_about: ");
+                case "4" ->
                     queryBuilder.add(query, BooleanClause.Occur.MUST);
-                }
+                default -> throw new IllegalStateException("Unexpected value: " + num);
             }
-            System.out.println(inputs.get(options.get(num)));
-            inputs.remove(options.get(num));
+
+            String campo = options.get(num);
+            if (inputs.get(campo) != null) {
+                System.out.println(campo + ": ");
+                System.out.println(inputs.get(campo));
+                inputs.remove(campo);
+            }
+
         }
         BooleanQuery bq = queryBuilder.build();
 
@@ -1262,9 +1288,9 @@ public class Facetas {
             System.out.println("property_type: " + d.get("property_type"));
             System.out.println("price: $" + d.get("price"));
             System.out.println("description: " + d.get("description"));
-            // System.out.println("host_location: " + d.get("host_location"));
+            System.out.println("host_about: " + d.get("host_about"));
             System.out.println("neighbourhood: " + d.get("neighbourhood_cleansed"));
-            // System.out.println("amenities: " + d.get("amenities"));
+            System.out.println("amenities: " + d.get("amenities"));
             System.out.println("----------------------------------");
         }
     }
