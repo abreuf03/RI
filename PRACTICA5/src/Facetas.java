@@ -1147,59 +1147,49 @@ public class Facetas {
         IndexSearcher searcher = new IndexSearcher(reader);
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         boolean finishedTyping = false;
-        Map<Query, Integer> filters = new HashMap<>();
-        Map<Query, String> inputs = new HashMap<>();
+        Map<Query, String> filters = new HashMap<>();
+        Map<String, String> inputs = new HashMap<>();
 
         System.out.println("Búsqueda avanzada");
-        List<String> options = new ArrayList<>();
-        options.add("Cualquier lugar");
-        options.add("En amenities");
-        options.add("En description");
-        options.add("En host_about");
+        Map<String, String> options = new HashMap<>();
+        options.put("1", "Cualquier lugar");
+        options.put("2", "En amenities");
+        options.put("3", "En description");
+        options.put("4", "En host_about");
 
         while (!finishedTyping) {
 
-
             System.out.println("Elegir uno de los campos que quiere usar: ");
-            for (int i = 0; i < options.size(); ++i) {
-                System.out.println(i+1 + ") " +options.get(i));
+            for (String s: options.keySet()) {
+                System.out.println(s + ") " +options.get(s));
             }
 
             QueryParser parser;
             String chosen = in.readLine();
             String input;
+            String key = options.get(chosen);
 
-            switch (options.get(Integer.parseInt(chosen)-1)) {
+            switch (key) {
                 case "Cualquier lugar" -> {
                     System.out.println("Cualquier lugar: ");
                     String[] columns = prepareColumns();
 
                     parser = new MultiFieldQueryParser(columns, analyzer);
                     input = in.readLine();
-//                    Query query = new MatchAllDocsQuery();
-//                    try {
-//                        query = parser.parse(input);
-//                    } catch (ParseException e) {
-//                        throw new RuntimeException(e);
-//                    }
-//                    TopDocs hit = searcher.search(query, 10);
-//                    StoredFields storedFields = searcher.storedFields();
-
-//                    System.out.println("Result: ");
-//                    for (ScoreDoc sd : hit.scoreDocs) {
-//                        Document d = storedFields.document(sd.doc);
-//                        System.out.println(sd.doc);
-//                    }
-                    filters.put(parser.parse(input), 1);
-                    inputs.put(parser.parse(input), input);
+                    filters.put(parser.parse(input), "1");
+                    if (inputs.containsKey(key)) {
+                        inputs.put(key, inputs.get(key) + " " + input);
+                    } else {
+                        inputs.put(key, input);
+                    }
                     break;
                 }
                 case "En amenities" -> {
                     System.out.println("En amenities: ");
                     input = in.readLine();
                     parser = new QueryParser("amenities", analyzer);
-                    filters.put(parser.parse(input), 2);
-                    inputs.put(parser.parse(input), input);
+                    filters.put(parser.parse(input), "2");
+                    inputs.put("En amenities", input);
                     options.remove("En amenities");
                     break;
                 }
@@ -1207,8 +1197,8 @@ public class Facetas {
                     System.out.println("En description: ");
                     input = in.readLine();
                     parser = new QueryParser("description", analyzer);
-                    filters.put(parser.parse(input), 3);
-                    inputs.put(parser.parse(input), input);
+                    filters.put(parser.parse(input), "3");
+                    inputs.put("En description", input);
                     options.remove("En description");
                     break;
                 }
@@ -1216,8 +1206,8 @@ public class Facetas {
                     System.out.println("En host_about: ");
                     input = in.readLine();
                     parser = new QueryParser("host_about", analyzer);
-                    filters.put(parser.parse(input), 4);
-                    inputs.put(parser.parse(input), input);
+                    filters.put(parser.parse(input), "4");
+                    inputs.put("En host_about", input);
                     options.remove("En host_about");
                     break;
                 }
@@ -1237,26 +1227,27 @@ public class Facetas {
         BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
 
         for (Query query : filters.keySet()) {
-            int num = filters.get(query);
+            String num = filters.get(query);
             switch (num) {
-                case 1 -> {
+                case "1" -> {
                     System.out.println("Cualquier lugar: ");
                     queryBuilder.add(query, BooleanClause.Occur.SHOULD);
                 }
-                case 2 -> {
+                case "2" -> {
                     System.out.println("En amenities: ");
                     queryBuilder.add(query, BooleanClause.Occur.MUST);
                 }
-                case 3 -> {
+                case "3" -> {
                     System.out.println("En description: ");
                     queryBuilder.add(query, BooleanClause.Occur.MUST);
                 }
-                case 4 -> {
+                case "4" -> {
                     System.out.println("En host_about: ");
                     queryBuilder.add(query, BooleanClause.Occur.MUST);
                 }
             }
-            System.out.println(inputs.get(query));
+            System.out.println(inputs.get(options.get(num)));
+            inputs.remove(options.get(num));
         }
         BooleanQuery bq = queryBuilder.build();
 
