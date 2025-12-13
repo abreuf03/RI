@@ -42,6 +42,29 @@ public class Clasificadores {
     private static FacetsConfig facetsConfig;
     private DirectoryTaxonomyWriter taxoWriter;
 
+    public Clasificadores(String indexPath) throws IOException {
+        this.indexPath = indexPath;
+        Directory indexDir = FSDirectory.open(Paths.get(indexPath));
+        this.analyzer = new EnglishAnalyzer();
+        IndexWriterConfig config = new IndexWriterConfig(analyzer);
+        config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
+
+        this.writer = new IndexWriter(indexDir, config);
+        Directory taxoDir = FSDirectory.open(Paths.get(indexPath + "_taxo"));
+        this.taxoWriter = new DirectoryTaxonomyWriter(taxoDir);
+
+        facetsConfig = new FacetsConfig();
+        facetsConfig.setMultiValued("amenities", true);
+        facetsConfig.setMultiValued("host_is_superhost", false);
+        facetsConfig.setHierarchical("host_since", true);
+        facetsConfig.setHierarchical("neighbourhood_hier", true);
+        facetsConfig.setMultiValued("property_type", false);
+        facetsConfig.setMultiValued("bathrooms", false);
+        facetsConfig.setMultiValued("bedrooms", false);
+
+    }
+
+
     private Document getDocument(Map<String, Integer> map, List<String> values) {
         Document doc = new Document();
 
@@ -477,7 +500,7 @@ public class Clasificadores {
         DirectoryReader originalReader = DirectoryReader.open(originalDir);
 
         // Directorios para train y test
-        Directory trainDir = FSDirectory.open(Paths.get(originalIndexPath + "_roomtype_train"));
+        Directory trainDir = FSDirectory.open(Paths.get(originalIndexPath + "_roomtype_train")); 
         Directory testDir  = FSDirectory.open(Paths.get(originalIndexPath + "_roomtype_test"));
 
         // 30% test, 0% cross-validation -> probar con 0.3 y tb 0.2
@@ -486,20 +509,207 @@ public class Clasificadores {
         //probar más de un tipo
         Analyzer classificationAnalyzer = new EnglishAnalyzer();
 
-        // classFieldName = "room_type_class"-> ir cambiando
+        
         splitter.split(
                 originalReader,
                 trainDir,
                 testDir,
-                null,                    // sin índice de cross-validation
+                null,                    
                 classificationAnalyzer,
-                true,                    // termVectors en índices nuevos
+                true,                    
                 "room_type_class",
                 "description"            // campo de texto de entrada
         );
 
         originalReader.close();
         originalDir.close();
+    }
+
+    public void splitIndexForTask_Bedrooms(String originalIndexPath) throws Exception {
+        Directory originalDir = FSDirectory.open(Paths.get(originalIndexPath));
+        DirectoryReader originalReader = DirectoryReader.open(originalDir);
+
+        // Directorios para train y test
+        Directory trainDir = FSDirectory.open(Paths.get(originalIndexPath + "_bedrooms_train")); 
+        Directory testDir  = FSDirectory.open(Paths.get(originalIndexPath + "_bedrooms_test"));
+
+        // 30% test, 0% cross-validation -> probar con 0.3 y tb 0.2
+        DatasetSplitter splitter = new DatasetSplitter(0.3, 0.0);
+
+        //probar más de un tipo
+        Analyzer classificationAnalyzer = new EnglishAnalyzer();
+
+        
+        splitter.split(
+                originalReader,
+                trainDir,
+                testDir,
+                null,                    
+                classificationAnalyzer,
+                true,                    
+                "bedrooms_class",
+                "description"            // campo de texto de entrada
+        );
+
+        originalReader.close();
+        originalDir.close();
+    }
+
+    public void splitIndexForTask_Neighbourhood(String originalIndexPath) throws Exception {
+        Directory originalDir = FSDirectory.open(Paths.get(originalIndexPath));
+        DirectoryReader originalReader = DirectoryReader.open(originalDir);
+
+        // Directorios para train y test
+        Directory trainDir = FSDirectory.open(Paths.get(originalIndexPath + "_neighbourhood_train")); 
+        Directory testDir  = FSDirectory.open(Paths.get(originalIndexPath + "_neighbourhood_test"));
+
+        // 30% test, 0% cross-validation -> probar con 0.3 y tb 0.2
+        DatasetSplitter splitter = new DatasetSplitter(0.3, 0.0);
+
+        //probar más de un tipo
+        Analyzer classificationAnalyzer = new EnglishAnalyzer();
+
+        
+        splitter.split(
+                originalReader,
+                trainDir,
+                testDir,
+                null,                    
+                classificationAnalyzer,
+                true,                    
+                "neighbourhood_group_class",
+                "description"            // campo de texto de entrada
+        );
+
+        originalReader.close();
+        originalDir.close();
+    }
+
+    public void splitIndexForTask_PropertyType(String originalIndexPath) throws Exception {
+        Directory originalDir = FSDirectory.open(Paths.get(originalIndexPath));
+        DirectoryReader originalReader = DirectoryReader.open(originalDir);
+
+        // Directorios para train y test
+        Directory trainDir = FSDirectory.open(Paths.get(originalIndexPath + "_proptype_train")); 
+        Directory testDir  = FSDirectory.open(Paths.get(originalIndexPath + "_proptype_test"));
+
+        // 30% test, 0% cross-validation -> probar con 0.3 y tb 0.2
+        DatasetSplitter splitter = new DatasetSplitter(0.3, 0.0);
+
+        //probar más de un tipo
+        Analyzer classificationAnalyzer = new EnglishAnalyzer();
+
+        
+        splitter.split(
+                originalReader,
+                trainDir,
+                testDir,
+                null,                    
+                classificationAnalyzer,
+                true,                    
+                "property_type_class",
+                "description"            // campo de texto de entrada
+        );
+
+        originalReader.close();
+        originalDir.close();
+    }
+
+    private void imprimirMatriz(ConfusionMatrix confusionMatrix) {
+        
+        System.out.println("Confusion Matrix:");
+        System.out.println(confusionMatrix); 
+
+        Map<String, Map<String, Long>> matrix = confusionMatrix.getLinearizedMatrix();
+        Set<String> labels = new LinkedHashSet<>();
+        labels.addAll(matrix.keySet());
+ 
+        for (Map<String, Long> row : matrix.values()) {
+            labels.addAll(row.keySet());
+        }
+
+        for (String label : labels) {
+            double precision = confusionMatrix.getPrecision(label);
+            double recall    = confusionMatrix.getRecall(label);
+            double f1        = confusionMatrix.getF1Measure(label);
+
+            System.out.println("Clase: " + label);
+            System.out.println("  Precision(" + label + ") = " + precision);
+            System.out.println("  Recall(" + label + ")    = " + recall);
+            System.out.println("  F1(" + label + ")        = " + f1);
+        }
+
+        System.out.println("Docs evaluados = " + confusionMatrix.getNumberOfEvaluatedDocs());
+        System.out.println("---------------------------------------------------------");
+    }
+
+    public void probarClasificadores(String baseIndexPath,String taskSuffix,String classFieldName,String textFieldName) throws Exception {
+
+        String trainPath = baseIndexPath + "_" + taskSuffix + "_train";
+        String testPath  = baseIndexPath + "_" + taskSuffix + "_test";
+
+        Directory trainDir = FSDirectory.open(Paths.get(trainPath));
+        Directory testDir  = FSDirectory.open(Paths.get(testPath));
+
+        DirectoryReader trainReader = DirectoryReader.open(trainDir);
+        DirectoryReader testReader  = DirectoryReader.open(testDir);
+
+        Analyzer classificationAnalyzer = new EnglishAnalyzer(); //probar otros
+
+        //SimpleNaiveBayesClassifier 
+        Classifier<BytesRef> nbClassifier = new SimpleNaiveBayesClassifier(trainReader,classificationAnalyzer, null,classFieldName,textFieldName);
+
+        System.out.println("=== TAREA: " + taskSuffix + " :: SimpleNaiveBayesClassifier ===");
+        ConfusionMatrix cmNB = ConfusionMatrixGenerator.getConfusionMatrix(testReader,nbClassifier,classFieldName,textFieldName,100000);
+        imprimirMatriz(cmNB);
+
+        //BM25NBClassifier
+        Classifier<BytesRef> bm25Classifier = new BM25NBClassifier(trainReader,classificationAnalyzer,null,classFieldName,textFieldName);
+
+        System.out.println("=== TAREA: " + taskSuffix + " :: BM25NBClassifier ===");
+        ConfusionMatrix cmBM25 = ConfusionMatrixGenerator.getConfusionMatrix(testReader,bm25Classifier,classFieldName,textFieldName,100000);
+        imprimirMatriz(cmBM25);
+
+        //KNearestNeighborClassifier
+        int k = 10; //ajustar he puesto 10 por poner
+        int minDocsFreq = 1;
+        int maxDocs = 1000;
+
+        Classifier<BytesRef> knnClassifier =new KNearestNeighborClassifier(trainReader,null,classificationAnalyzer,
+                        null,k,minDocsFreq,maxDocs,classFieldName,textFieldName);
+
+        System.out.println("=== TAREA: " + taskSuffix + " :: KNearestNeighborClassifier ===");
+        ConfusionMatrix cmKNN = ConfusionMatrixGenerator.getConfusionMatrix(testReader,knnClassifier,classFieldName,textFieldName,100000);
+        imprimirMatriz(cmKNN);
+
+        
+        trainReader.close();
+        testReader.close();
+        trainDir.close();
+        testDir.close();
+    }
+
+
+
+    public static void main(String[] args) throws Exception {
+        String IndexPath = "";
+        String csvPath = "doc/listings.csv";
+
+        Clasificadores c = new Clasificadores(IndexPath);
+
+        
+        c.createBothIndices(csvPath, 1000, "all");
+
+        
+        c.splitIndexForTask_roomType(IndexPath);
+        c.splitIndexForTask_Bedrooms(IndexPath);
+        c.splitIndexForTask_PropertyType(IndexPath);
+        c.splitIndexForTask_Neighbourhood(IndexPath);
+
+        
+        c.probarClasificadores(IndexPath, "roomtype", "room_type_class", "description");
+        c.probarClasificadores(IndexPath, "bedrooms", "bedrooms_class", "description");
+        c.probarClasificadores(IndexPath, "property_type", "property_type_class", "description");
     }
 
 }
