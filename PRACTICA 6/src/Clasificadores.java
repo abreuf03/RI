@@ -159,13 +159,13 @@ public class Clasificadores {
                         String cleanData = val.replaceAll("<[^>]+>", ""); //eliminar etiquetas de HTML
                         if(!val.isEmpty() && val != null){
                             
-                                    // Campo de texto CON term vectors
+                             // Campo de texto CON term vectors
                             FieldType tvType = new FieldType(TextField.TYPE_STORED);
                             tvType.setStoreTermVectors(true);
                             tvType.setStoreTermVectorPositions(true);
                             tvType.setStoreTermVectorOffsets(true);
                             doc.add(new Field(attr, cleanData, tvType));
-                            System.out.println("DEBUG: Añadiendo description = " + cleanData.substring(0, Math.min(60, cleanData.length())));
+                            //System.out.println("DEBUG: Añadiendo description = " + cleanData.substring(0, Math.min(60, cleanData.length())));
 
                         }
 
@@ -257,22 +257,14 @@ public class Clasificadores {
                     //PRACTICA 6
 
                     case "room_type":
-                        // SOLUCIÓN para "room_type"
-                        // ...
                         String rt = (val == null || val.trim().isEmpty()) ? "UNKNOWN" : val.trim();
-                        System.out.println("DEBUG: Añadiendo room_type_class = " + rt);
-
-                        // 1. Campo de clase: Indexado y ALMACENADO como StringField. Esto es lo que lee ConfusionMatrixGenerator.
+                        //System.out.println("DEBUG: Añadiendo room_type_class = " + rt);
                         doc.add(new StringField("room_type_class", rt, Field.Store.YES));
-
-                        // 2. SortedDocValuesField: Requerido por DatasetSplitter para clasificar y balancear.
+                        //lo pide el data set splitter
                         doc.add(new SortedDocValuesField("room_type_class", new BytesRef(rt)));
                         break;
 
-
-                   
                     case "neighbourhood_group_cleansed":
-                        // Añadir el campo original
                         doc.add(new StringField(attr, val, Field.Store.YES));
 
                         String barrio = null;
@@ -289,8 +281,7 @@ public class Clasificadores {
                             barrio != null && !barrio.isEmpty()) {
                             // Faceta jerárquica
                             doc.add(new FacetField("neighbourhood_hier", val, barrio));
-                            
-                            // ** CAMBIOS PARA CLASIFICACIÓN (Mantener la convención _class) **
+   
                             String classVal = val.trim();
                             doc.add(new StringField("neighbourhood_group_class", classVal, Field.Store.YES));
                             doc.add(new SortedDocValuesField("neighbourhood_group_class", new BytesRef(classVal)));
@@ -302,11 +293,11 @@ public class Clasificadores {
                             doc.add(new FacetField("property_type", val));
                             
                             String classval = classifyPropType(val);
-                            // ** CAMBIOS PARA CLASIFICACIÓN **
+                    
                             doc.add(new StringField("property_type_class", classval, Field.Store.YES));
                             doc.add(new SortedDocValuesField("property_type_class", new BytesRef(classval)));
                             
-                            // Campo original
+                            
                             doc.add(new StringField(attr, val, Field.Store.YES));
                         }
                         break;
@@ -317,22 +308,21 @@ public class Clasificadores {
                             if (val != null && !cleaned.isEmpty()) { // Usar cleaned aquí
                                 int num = (int) Double.parseDouble(cleaned);
                                 
-                                // (El código existente para IntPoint, StoredField, NumericDocValuesField, FacetField está bien)
                                 doc.add(new IntPoint(attr, num));
                                 doc.add(new StoredField(attr, num));
-                                doc.add(new NumericDocValuesField(attr + "_dv", num));
+                                doc.add(new NumericDocValuesField(attr, num));
                                 doc.add(new FacetField(attr, Integer.toString(num)));
 
                                 String class_val = classifyBedrooms(num);
-                                // ** CAMBIOS PARA CLASIFICACIÓN **
+                                
                                 doc.add(new StringField("bedrooms_class",class_val , Field.Store.YES));
                                 doc.add(new SortedDocValuesField("bedrooms_class", new BytesRef(class_val)));
-                            } else {
-                                // Manejar nulos o vacíos para la clase (importante para evitar sesgo)
+                            } /*else {
+                                
                                 String class_val = classifyBedrooms(0); // O manejar como UNKNOWN
                                 doc.add(new StringField("bedrooms_class",class_val , Field.Store.YES));
                                 doc.add(new SortedDocValuesField("bedrooms_class", new BytesRef(class_val)));
-                            }
+                            }*/
                         } catch (Exception e) {
                             // Esto captura la excepción si el valor no es un número limpio
                         }
@@ -342,17 +332,15 @@ public class Clasificadores {
                         try {
                             if (!val.isEmpty()) {
                                 value = Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-                                // (El código existente para DoublePoint, StoredField, y DoubleDocValuesField está bien)
+                                
                                 doc.add(new DoublePoint("review_scores_rating", value));
                                 doc.add(new StoredField("review_scores_rating", value));
                                 doc.add(new DoubleDocValuesField("review_scores_rating", value));
 
                                 String class_val = classifyReviewScore(value);
                                 
-                                // ** CAMBIOS PARA CLASIFICACIÓN **
-                                // 1. Campo de clase: Indexado y ALMACENADO como StringField.
                                 doc.add(new StringField("rating_class", class_val, Field.Store.YES));
-                                // 2. SortedDocValuesField: Requerido por DatasetSplitter.
+                                
                                 doc.add(new SortedDocValuesField("rating_class", new BytesRef(class_val)));
                             }
 
@@ -731,11 +719,12 @@ public class Clasificadores {
         DirectoryReader trainReader = DirectoryReader.open(trainDir);
         DirectoryReader testReader  = DirectoryReader.open(testDir);
 
-        // justo después de abrir el testReader
+        // DEBUG
+        /* 
         for (int i = 0; i < Math.min(5, testReader.maxDoc()); i++) {
             Document d = testReader.storedFields().document(i);
             System.out.println("TEST DOC " + i + ": " +
-                d.get("room_type_class") + " / " + d.get("description"));
+                d.get(classFieldName) + " / " + d.get("description"));
         }
 
 
@@ -759,7 +748,7 @@ public class Clasificadores {
 
         System.out.println("Docs test con [" + classFieldName + " + " + textFieldName + "]: " + docsConClaseYTexto);
         System.out.println("--------------------------------------");
-        // === FIN DEBUG ===
+        // === FIN DEBUG ===*/
         Analyzer classificationAnalyzer = new EnglishAnalyzer(); //probar otros
         
 
@@ -832,7 +821,7 @@ public class Clasificadores {
 
         
         Clasificadores c = new Clasificadores(IndexPath);
-        c.createBothIndices(csvPath, 100, "prop");
+        c.createBothIndices(csvPath, 500, "prop");
         c.checkFieldCoverage(IndexPath);
         c.close(); 
 
@@ -842,6 +831,7 @@ public class Clasificadores {
         splitter.splitIndexForTask_Bedrooms(IndexPath);
         splitter.splitIndexForTask_PropertyType(IndexPath);
         splitter.splitIndexForTask_Neighbourhood(IndexPath);
+        splitter.splitIndexForTask_Rating(IndexPath);
         splitter.close();
 
         
@@ -850,10 +840,10 @@ public class Clasificadores {
         eval.probarClasificadores(IndexPath, "bedrooms", "bedrooms_class", "description");
         eval.probarClasificadores(IndexPath, "proptype", "property_type_class", "description");
         eval.probarClasificadores(IndexPath, "neighbourhood", "neighbourhood_group_class", "description");
+        eval.probarClasificadores(IndexPath, "rating", "rating_class", "description");
         eval.close();
     }
 
 
 
-                    }
-
+                                    }
