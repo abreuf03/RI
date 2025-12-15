@@ -156,14 +156,19 @@ public class Clasificadores {
                         break;
                 
                     case "description":
-                        String cleanData = val
-                        .replaceAll("<[^>]+>", ""); //eliminar etiquetas de HTML
-                                // Campo de texto CON term vectors
-                        FieldType tvType = new FieldType(TextField.TYPE_STORED);
-                        tvType.setStoreTermVectors(true);
-                        tvType.setStoreTermVectorPositions(true);
-                        tvType.setStoreTermVectorOffsets(true);
-                        doc.add(new TextField(attr, cleanData, Field.Store.YES));
+                        String cleanData = val.replaceAll("<[^>]+>", ""); //eliminar etiquetas de HTML
+                        if(!val.isEmpty() && val != null){
+                            
+                                    // Campo de texto CON term vectors
+                            FieldType tvType = new FieldType(TextField.TYPE_STORED);
+                            tvType.setStoreTermVectors(true);
+                            tvType.setStoreTermVectorPositions(true);
+                            tvType.setStoreTermVectorOffsets(true);
+                            doc.add(new Field(attr, cleanData, tvType));
+                            System.out.println("DEBUG: Añadiendo description = " + cleanData.substring(0, Math.min(60, cleanData.length())));
+
+                        }
+
                         break;
                     case "name":
                     case "neighborhood_overview":
@@ -252,12 +257,26 @@ public class Clasificadores {
                     //PRACTICA 6
 
                     case "room_type":
-                        if(!val.isEmpty() && !val.equals(null)){
-                            doc.add(new StringField(attr, val, Field.Store.YES));
-                            doc.add(new StringField("room_type_class", val, Field.Store.YES));
-                            doc.add(new SortedDocValuesField("room_type_class", new BytesRef(val)));
-                        }
+                        String rt = (val == null || val.trim().isEmpty()) ? "UNKNOWN" : val.trim();
+                        System.out.println("DEBUG: Añadiendo room_type_class = " + rt);
+
+                        // Campo base
+                        doc.add(new StringField(attr, rt, Field.Store.YES));
+
+                        // Campo de clase indexado y almacenado
+                        FieldType classType = new FieldType();
+                        classType.setIndexOptions(IndexOptions.DOCS);
+                        classType.setTokenized(false);
+                        classType.setStored(true);
+                        doc.add(new Field("room_type_class", rt, classType));
+
+                        // SortedDocValuesField requerido por DatasetSplitter
+                        doc.add(new SortedDocValuesField("room_type_class", new BytesRef(rt)));
                         break;
+
+
+
+
 
                     case "neighbourhood_group_cleansed":
                         doc.add(new StringField(attr, val, Field.Store.YES));
@@ -673,6 +692,14 @@ public class Clasificadores {
         DirectoryReader trainReader = DirectoryReader.open(trainDir);
         DirectoryReader testReader  = DirectoryReader.open(testDir);
 
+        // justo después de abrir el testReader
+        for (int i = 0; i < Math.min(5, testReader.maxDoc()); i++) {
+            Document d = testReader.storedFields().document(i);
+            System.out.println("TEST DOC " + i + ": " +
+                d.get("room_type_class") + " / " + d.get("description"));
+        }
+
+
         // === DEBUG: INFO BÁSICA DE LOS ÍNDICES ===
         System.out.println("------ DEBUG " + taskSuffix + " ------");
         System.out.println("Train docs: " + trainReader.numDocs());
@@ -680,17 +707,16 @@ public class Clasificadores {
 
         int docsConClaseYTexto = 0;
 
-        // En Lucene nuevo, los stored fields se obtienen así:
-        org.apache.lucene.index.StoredFields storedFields = testReader.storedFields();
+        for (LeafReaderContext leafCtx : testReader.leaves()) {
+            LeafReader leaf = leafCtx.reader();
+            Terms classTerms = leaf.terms(classFieldName);
+            Terms textTerms = leaf.terms(textFieldName);
 
-        for (int i = 0; i < testReader.maxDoc(); i++) {
-            Document d = storedFields.document(i);  // ← en vez de testReader.document(i)
-            IndexableField cls = d.getField(classFieldName);
-            IndexableField txt = d.getField(textFieldName);
-            if (cls != null && txt != null) {
-                docsConClaseYTexto++;
+            if (classTerms != null && textTerms != null) {
+                docsConClaseYTexto += leaf.maxDoc(); // hay docs con ambos campos indexados
             }
         }
+
 
         System.out.println("Docs test con [" + classFieldName + " + " + textFieldName + "]: " + docsConClaseYTexto);
         System.out.println("--------------------------------------");
@@ -731,32 +757,63 @@ public class Clasificadores {
         testDir.close();
     }
 
+    //borrar luego es para comprobar
+    public void checkFieldCoverage(String indexPath) throws Exception {
+        Directory dir = FSDirectory.open(Paths.get(indexPath));
+        DirectoryReader reader = DirectoryReader.open(dir);
+
+        int total = reader.numDocs();
+        int conDesc = 0, conRoomType = 0, conAmbos = 0;
+
+        for (int i = 0; i < total; i++) {
+            Document d = reader.storedFields().document(i);
+            boolean desc = d.get("description") != null && !d.get("description").isEmpty();
+            boolean cls = d.get("room_type_class") != null && !d.get("room_type_class").isEmpty();
+
+            if (desc) conDesc++;
+            if (cls) conRoomType++;
+            if (desc && cls) conAmbos++;
+        }
+
+        System.out.println("Docs totales: " + total);
+        System.out.println("Con description: " + conDesc);
+        System.out.println("Con room_type_class: " + conRoomType);
+        System.out.println("Con ambos: " + conAmbos);
+
+        reader.close();
+        dir.close();
+    }
+
+
 
 
     public static void main(String[] args) throws Exception {
         String IndexPath = "index/IndexUnico";
         String csvPath = "doc/listings.csv";
 
+        
         Clasificadores c = new Clasificadores(IndexPath);
+        c.createBothIndices(csvPath, 10, "prop");
+        c.checkFieldCoverage(IndexPath);
+        c.close(); 
 
+        
+        Clasificadores splitter = new Clasificadores(IndexPath); // nuevo objeto, solo para dividir
+        splitter.splitIndexForTask_roomType(IndexPath);
+        splitter.splitIndexForTask_Bedrooms(IndexPath);
+        splitter.splitIndexForTask_PropertyType(IndexPath);
+        splitter.splitIndexForTask_Neighbourhood(IndexPath);
+        splitter.close();
 
-        c.createBothIndices(csvPath, 500, "prop");
-
-
-        c.splitIndexForTask_roomType(IndexPath);
-        c.splitIndexForTask_Bedrooms(IndexPath);
-        c.splitIndexForTask_PropertyType(IndexPath);
-        c.splitIndexForTask_Neighbourhood(IndexPath);
-
-
-        c.probarClasificadores(IndexPath, "roomtype", "room_type_class", "description");
-        c.probarClasificadores(IndexPath, "bedrooms", "bedrooms_class", "description");
-        c.probarClasificadores(IndexPath, "proptype", "property_type_class", "description");
-
-        c.close();
+        
+        Clasificadores eval = new Clasificadores(IndexPath);
+        eval.probarClasificadores(IndexPath, "roomtype", "room_type_class", "description");
+        eval.probarClasificadores(IndexPath, "bedrooms", "bedrooms_class", "description");
+        eval.probarClasificadores(IndexPath, "proptype", "property_type_class", "description");
+        eval.probarClasificadores(IndexPath, "neighbourhood", "neighbourhood_group_class", "description");
+        eval.close();
     }
 
 
+
 }
-
-
