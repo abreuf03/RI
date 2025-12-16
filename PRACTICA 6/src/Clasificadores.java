@@ -1,5 +1,7 @@
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.analysis.shingle.ShingleAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.*;
@@ -24,6 +26,7 @@ import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.BytesRef;
 
 import org.apache.lucene.classification.Classifier;
+import org.apache.lucene.classification.KNearestFuzzyClassifier;
 import org.apache.lucene.classification.SimpleNaiveBayesClassifier;
 import org.apache.lucene.classification.BM25NBClassifier;
 import org.apache.lucene.classification.KNearestNeighborClassifier;
@@ -45,7 +48,7 @@ public class Clasificadores {
     public Clasificadores(String indexPath) throws IOException {
         this.indexPath = indexPath;
         Directory indexDir = FSDirectory.open(Paths.get(indexPath));
-        this.analyzer = new EnglishAnalyzer();
+        this.analyzer = new StandardAnalyzer();
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
 
@@ -158,7 +161,12 @@ public class Clasificadores {
                     case "description":
                         String cleanData = val.replaceAll("<[^>]+>", ""); //eliminar etiquetas de HTML
                         if(!val.isEmpty() && val != null){
-                            
+                            cleanData = val
+                                        .replaceAll("<[^>]+>", "") // eliminar HTML
+                                        .replaceAll("[^a-zA-Z ]", " ") // quitar símbolos
+                                        .replaceAll("\\s+", " ") // espacios duplicados
+                                        .trim()
+                                        .toLowerCase();
                              // Campo de texto CON term vectors
                             FieldType tvType = new FieldType(TextField.TYPE_STORED);
                             tvType.setStoreTermVectors(true);
@@ -170,8 +178,17 @@ public class Clasificadores {
                         }
 
                         break;
-                    case "name":
                     case "neighborhood_overview":
+                        String cleanNeigh = val.replaceAll("<[^>]+>", "");
+                        if (val != null && !val.isEmpty()) {
+                            FieldType tvType = new FieldType(TextField.TYPE_STORED);
+                            tvType.setStoreTermVectors(true);
+                            tvType.setStoreTermVectorPositions(true);
+                            tvType.setStoreTermVectorOffsets(true);
+                            doc.add(new Field("neighborhood_overview", cleanNeigh, tvType));
+                        }
+                        break;
+                    case "name":
                     case "bathrooms_text":
                     case "host_about":
                     case "host_response_time":
@@ -257,7 +274,8 @@ public class Clasificadores {
                     //PRACTICA 6
 
                     case "room_type":
-                        String rt = (val == null || val.trim().isEmpty()) ? "UNKNOWN" : val.trim();
+                        String rt = (val == null || val.trim().isEmpty()) ? "UNKNOWN" : val.trim().toLowerCase().replaceAll("[\\s/]+", "_");
+
                         //System.out.println("DEBUG: Añadiendo room_type_class = " + rt);
                         doc.add(new StringField("room_type_class", rt, Field.Store.YES));
                         //lo pide el data set splitter
@@ -281,10 +299,11 @@ public class Clasificadores {
                             barrio != null && !barrio.isEmpty()) {
                             // Faceta jerárquica
                             doc.add(new FacetField("neighbourhood_hier", val, barrio));
-   
-                            String classVal = val.trim();
+                            
+                            String classVal = val.trim().replaceAll("\\s+", "_").toLowerCase();
                             doc.add(new StringField("neighbourhood_group_class", classVal, Field.Store.YES));
                             doc.add(new SortedDocValuesField("neighbourhood_group_class", new BytesRef(classVal)));
+   
                         }
                         break;
 
@@ -530,7 +549,7 @@ public class Clasificadores {
         Directory testDir  = FSDirectory.open(Paths.get(originalIndexPath + "_roomtype_test"));
         Directory cvDir    = FSDirectory.open(Paths.get(originalIndexPath + "_roomtype_cv"));
 
-        DatasetSplitter splitter = new DatasetSplitter(0.3, 0.0); 
+        DatasetSplitter splitter = new DatasetSplitter(0.2, 0.0); 
         Analyzer classificationAnalyzer = new EnglishAnalyzer();
 
         splitter.split(
@@ -594,7 +613,11 @@ public class Clasificadores {
         Directory cvDir    = FSDirectory.open(Paths.get(originalIndexPath + "_neighbourhood_cv"));
 
         DatasetSplitter splitter = new DatasetSplitter(0.3, 0.0);
-        Analyzer classificationAnalyzer = new EnglishAnalyzer();
+        //Analyzer classificationAnalyzer = new EnglishAnalyzer();
+        Analyzer textAnalyzer = new StandardAnalyzer();
+        Map<String, Analyzer> perField = new HashMap<>();
+        perField.put("neighbourhood_group_class", new KeywordAnalyzer());
+        Analyzer classificationAnalyzer = new PerFieldAnalyzerWrapper(textAnalyzer, perField);
 
         splitter.split(
             originalReader,
@@ -604,7 +627,7 @@ public class Clasificadores {
             classificationAnalyzer,
             true,
             "neighbourhood_group_class", // classFieldName
-            "description",               // textFieldName
+            "neighborhood_overview",               // textFieldName
             // ** CAMBIO: Campo de clase ALMACENADO **
             "neighbourhood_group_class"
         );
@@ -626,7 +649,7 @@ public class Clasificadores {
         Directory cvDir    = FSDirectory.open(Paths.get(originalIndexPath + "_proptype_cv"));
 
         DatasetSplitter splitter = new DatasetSplitter(0.3, 0.0);
-        Analyzer classificationAnalyzer = new EnglishAnalyzer();
+        Analyzer classificationAnalyzer = new StandardAnalyzer();
 
         splitter.split(
             originalReader,
@@ -657,7 +680,7 @@ public class Clasificadores {
         Directory cvDir    = FSDirectory.open(Paths.get(originalIndexPath + "_rating_cv"));
 
         DatasetSplitter splitter = new DatasetSplitter(0.3, 0.0);
-        Analyzer classificationAnalyzer = new EnglishAnalyzer();
+        Analyzer classificationAnalyzer = new StandardAnalyzer();
 
         splitter.split(
             originalReader,
@@ -749,7 +772,12 @@ public class Clasificadores {
         System.out.println("Docs test con [" + classFieldName + " + " + textFieldName + "]: " + docsConClaseYTexto);
         System.out.println("--------------------------------------");
         // === FIN DEBUG ===*/
-        Analyzer classificationAnalyzer = new EnglishAnalyzer(); //probar otros
+        //Analyzer classificationAnalyzer = new StandardAnalyzer(); //probar otros
+
+        Analyzer textAnalyzer = new StandardAnalyzer();
+        Map<String, Analyzer> perField = new HashMap<>();
+        perField.put(classFieldName, new KeywordAnalyzer());
+        Analyzer classificationAnalyzer = new PerFieldAnalyzerWrapper(textAnalyzer, perField);
         
 
         //SimpleNaiveBayesClassifier 
@@ -767,7 +795,7 @@ public class Clasificadores {
         imprimirMatriz(cmBM25);
 
         //KNearestNeighborClassifier
-        int k = 15; //ajustar he puesto 10 por poner
+        int k = 8; //ajustar he puesto 10 por poner
         int minDocsFreq = 1;
         int maxDocs = 1000;
 
@@ -778,6 +806,12 @@ public class Clasificadores {
         ConfusionMatrix cmKNN = ConfusionMatrixGenerator.getConfusionMatrix(testReader,knnClassifier,classFieldName,textFieldName,100000);
         imprimirMatriz(cmKNN);
 
+        Classifier<BytesRef> kFuzzyClassifier = new KNearestFuzzyClassifier(trainReader, null, classificationAnalyzer, 
+            null, k,classFieldName,textFieldName);
+        
+        System.out.println("=== TAREA: " + taskSuffix + " :: KFuzzyClassifier ===");
+        ConfusionMatrix cmKfuzzy = ConfusionMatrixGenerator.getConfusionMatrix(testReader,kFuzzyClassifier,classFieldName,textFieldName,100000);
+        imprimirMatriz(cmKfuzzy);
         
         trainReader.close();
         testReader.close();
@@ -786,6 +820,7 @@ public class Clasificadores {
     }
 
     //borrar luego es para comprobar
+    /* 
     public void checkFieldCoverage(String indexPath) throws Exception {
         Directory dir = FSDirectory.open(Paths.get(indexPath));
         DirectoryReader reader = DirectoryReader.open(dir);
@@ -810,7 +845,7 @@ public class Clasificadores {
 
         reader.close();
         dir.close();
-    }
+    }*/
 
 
 
@@ -821,8 +856,8 @@ public class Clasificadores {
 
         
         Clasificadores c = new Clasificadores(IndexPath);
-        c.createBothIndices(csvPath, 500, "prop");
-        c.checkFieldCoverage(IndexPath);
+        c.createBothIndices(csvPath, 1000, "prop");
+        //c.checkFieldCoverage(IndexPath);
         c.close(); 
 
         
@@ -836,14 +871,15 @@ public class Clasificadores {
 
         
         Clasificadores eval = new Clasificadores(IndexPath);
-        eval.probarClasificadores(IndexPath, "roomtype", "room_type_class", "description");
-        eval.probarClasificadores(IndexPath, "bedrooms", "bedrooms_class", "description");
+        //eval.probarClasificadores(IndexPath, "roomtype", "room_type_class", "description");
+        //eval.probarClasificadores(IndexPath, "bedrooms", "bedrooms_class", "description");
         eval.probarClasificadores(IndexPath, "proptype", "property_type_class", "description");
-        eval.probarClasificadores(IndexPath, "neighbourhood", "neighbourhood_group_class", "description");
-        eval.probarClasificadores(IndexPath, "rating", "rating_class", "description");
+        //eval.probarClasificadores(IndexPath, "neighbourhood", "neighbourhood_group_class", "neighborhood_overview");
+        //eval.probarClasificadores(IndexPath, "rating", "rating_class", "description");
         eval.close();
     }
 
 
 
-                                    }
+}
+
