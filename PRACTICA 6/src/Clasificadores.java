@@ -33,7 +33,10 @@ import org.apache.lucene.classification.KNearestNeighborClassifier;
 import org.apache.lucene.classification.utils.DatasetSplitter;
 import org.apache.lucene.classification.utils.ConfusionMatrixGenerator;
 import org.apache.lucene.classification.utils.ConfusionMatrixGenerator.ConfusionMatrix;
-
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import com.opencsv.*;
 public class Clasificadores {
@@ -48,7 +51,7 @@ public class Clasificadores {
     public Clasificadores(String indexPath) throws IOException {
         this.indexPath = indexPath;
         Directory indexDir = FSDirectory.open(Paths.get(indexPath));
-        this.analyzer = new StandardAnalyzer();
+        this.analyzer = new EnglishAnalyzer();
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
 
@@ -649,7 +652,7 @@ public class Clasificadores {
         Directory cvDir    = FSDirectory.open(Paths.get(originalIndexPath + "_proptype_cv"));
 
         DatasetSplitter splitter = new DatasetSplitter(0.3, 0.0);
-        Analyzer classificationAnalyzer = new StandardAnalyzer();
+        Analyzer classificationAnalyzer = new EnglishAnalyzer();
 
         splitter.split(
             originalReader,
@@ -774,7 +777,7 @@ public class Clasificadores {
         // === FIN DEBUG ===*/
         //Analyzer classificationAnalyzer = new StandardAnalyzer(); //probar otros
 
-        Analyzer textAnalyzer = new StandardAnalyzer();
+        Analyzer textAnalyzer = new EnglishAnalyzer();
         Map<String, Analyzer> perField = new HashMap<>();
         perField.put(classFieldName, new KeywordAnalyzer());
         Analyzer classificationAnalyzer = new PerFieldAnalyzerWrapper(textAnalyzer, perField);
@@ -795,16 +798,16 @@ public class Clasificadores {
         imprimirMatriz(cmBM25);
 
         //KNearestNeighborClassifier
-        int k = 8; //ajustar he puesto 10 por poner
+        int k = 5; //ajustar he puesto 10 por poner
         int minDocsFreq = 1;
         int maxDocs = 1000;
 
         Classifier<BytesRef> knnClassifier =new KNearestNeighborClassifier(trainReader,null,classificationAnalyzer,
                         null,k,minDocsFreq,maxDocs,classFieldName,textFieldName);
 
-        System.out.println("=== TAREA: " + taskSuffix + " :: KNearestNeighborClassifier ===");
-        ConfusionMatrix cmKNN = ConfusionMatrixGenerator.getConfusionMatrix(testReader,knnClassifier,classFieldName,textFieldName,100000);
-        imprimirMatriz(cmKNN);
+       // System.out.println("=== TAREA: " + taskSuffix + " :: KNearestNeighborClassifier ===");
+       // ConfusionMatrix cmKNN = ConfusionMatrixGenerator.getConfusionMatrix(testReader,knnClassifier,classFieldName,textFieldName,100000);
+       // imprimirMatriz(cmKNN);
 
         Classifier<BytesRef> kFuzzyClassifier = new KNearestFuzzyClassifier(trainReader, null, classificationAnalyzer, 
             null, k,classFieldName,textFieldName);
@@ -848,38 +851,81 @@ public class Clasificadores {
     }*/
 
 
+    // Borra una carpeta y todo su contenido (subcarpetas y ficheros)
+    public static void deleteDirectoryRecursively(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            return;
+        }
+
+        // Primero borramos contenido, luego la carpeta raíz
+        Files.walk(path)
+            .sorted(Comparator.reverseOrder())
+            .forEach(p -> {
+                try {
+                    Files.delete(p);
+                } catch (IOException e) {
+                    System.err.println("No se pudo borrar: " + p + " -> " + e.getMessage());
+                }
+            });
+    }
+
+    public static void borrarIndicesGenerados(String baseIndexPath) throws IOException {
+        Path base = Paths.get(baseIndexPath);
+        Path parent = base.getParent();           // "index"
+        String prefix = base.getFileName().toString(); // "IndexUnico"
+
+        if (parent == null || !Files.exists(parent)) {
+            return;
+        }
+
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(parent, prefix + "*")) {
+            for (Path p : stream) {
+                System.out.println("Borrando índice: " + p.toString());
+                deleteDirectoryRecursively(p);
+            }
+        }
+    }
+
 
 
     public static void main(String[] args) throws Exception {
-        String IndexPath = "index/IndexUnico";
-        String csvPath = "doc/listings.csv";
+        
+        if (args.length < 2) {
+            System.err.println("Uso: java Clasificadores <rutaIndex> <rutaCSV>");
+            System.err.println("Ejemplo: java Clasificadores index/IndexUnico doc/listings.csv");
+            return;
+        }
+
+        String indexPath = args[0]; // "index/IndexUnico"
+        String csvPath   = args[1]; // "doc/listings.csv"
 
         
-        Clasificadores c = new Clasificadores(IndexPath);
-        c.createBothIndices(csvPath, 1000, "prop");
-        //c.checkFieldCoverage(IndexPath);
+        int limit = 1000;
+       
+        borrarIndicesGenerados(indexPath);
+
+        Clasificadores c = new Clasificadores(indexPath);
+        c.createBothIndices(csvPath, limit, "prop");
         c.close(); 
 
-        
-        Clasificadores splitter = new Clasificadores(IndexPath); // nuevo objeto, solo para dividir
-        splitter.splitIndexForTask_roomType(IndexPath);
-        splitter.splitIndexForTask_Bedrooms(IndexPath);
-        splitter.splitIndexForTask_PropertyType(IndexPath);
-        splitter.splitIndexForTask_Neighbourhood(IndexPath);
-        splitter.splitIndexForTask_Rating(IndexPath);
+        Clasificadores splitter = new Clasificadores(indexPath);
+        splitter.splitIndexForTask_roomType(indexPath);
+        splitter.splitIndexForTask_Bedrooms(indexPath);
+        splitter.splitIndexForTask_PropertyType(indexPath);
+        splitter.splitIndexForTask_Neighbourhood(indexPath);
+        splitter.splitIndexForTask_Rating(indexPath);
         splitter.close();
 
-        
-        Clasificadores eval = new Clasificadores(IndexPath);
-        //eval.probarClasificadores(IndexPath, "roomtype", "room_type_class", "description");
-        //eval.probarClasificadores(IndexPath, "bedrooms", "bedrooms_class", "description");
-        eval.probarClasificadores(IndexPath, "proptype", "property_type_class", "description");
-        //eval.probarClasificadores(IndexPath, "neighbourhood", "neighbourhood_group_class", "neighborhood_overview");
-        //eval.probarClasificadores(IndexPath, "rating", "rating_class", "description");
+        Clasificadores eval = new Clasificadores(indexPath);
+        //eval.probarClasificadores(indexPath, "roomtype", "room_type_class", "description");
+        //eval.probarClasificadores(indexPath, "bedrooms", "bedrooms_class", "description");
+        eval.probarClasificadores(indexPath, "proptype", "property_type_class", "description");
+        //eval.probarClasificadores(indexPath, "neighbourhood", "neighbourhood_group_class", "neighborhood_overview");
+        //eval.probarClasificadores(indexPath, "rating", "rating_class", "description");
         eval.close();
     }
 
 
 
-}
 
+}
